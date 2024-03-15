@@ -1,0 +1,271 @@
+package com.practice.service;
+
+import com.practice.cache.impl.ConcurrentLruLocalCache;
+import com.practice.common.exception.BalanceNotEnoughException;
+import com.practice.common.exception.IllegalAccountException;
+import com.practice.common.result.RedPacketResult;
+import com.practice.common.result.ShareResult;
+import com.practice.dao.RedPacketDao;
+import com.practice.extension.RedPacketExtensionComposite;
+import com.practice.mapper.AccountMapper;
+import com.practice.util.RedPacketKeyUtil;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.SendStatus;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionCallbackWithoutResult;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import javax.annotation.PostConstruct;
+import java.util.Enumeration;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
+@Service
+@Slf4j
+public class RedPacketService {
+    @Autowired
+    private RedPacketDao redPacketDao;
+    @Autowired
+    private AccountMapper accountMapper;
+    @Autowired
+    private RocketMQTemplate rocketMQTemplate;
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+    @Autowired
+    private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
+    @Value("${red-packet.key.result-placeholder}")
+    private String RESULT_KEY_PLACEHOLDER; // 预生成红包结果key所使用的占位项
+    @Value("${red-packet.share.max-try-times}")
+    private int maxTryTimes; // 同一个抢红包请求的重试次数，超过次数后没有获得合理结果则直接响应错误信息
+    @Value("${red-packet.cache.capacity}")
+    private int cacheCapacity; // 本地缓存容量
+    @Value("${red-packet.atomic.capacity}")
+    private int atomicMapCapacity; // 原子整数Map容量
+    @Value("${red-packet.publish.threads.min}")
+    private int coreTransactionPoolSize; // 线程池核心线程数
+    @Value("${red-packet.publish.threads.max}")
+    private int maxTransactionPoolSize; // 线程池最大线程数
+    @Value("${red-packet.publish.queue-size}")
+    private int queueCapacity; // 线程池阻塞队列容量
+    private ConcurrentLruLocalCache<Map<String, String>> cache; // 本地缓存，存储红包key对应的抢红包结果
+    private ConcurrentHashMap<String, AtomicInteger> atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
+    private final AtomicInteger atomicMapSize = new AtomicInteger(); // 原子整数Map当前大小
+    private final ConcurrentLinkedQueue<AtomicInteger> atomicPool = new ConcurrentLinkedQueue<>(); // 原子整数池，实现原子整数的复用
+    private final ScheduledExecutorService scheduledPool = // 检查原子整数Map泄漏问题的巡逻线程的线程池
+            Executors.newScheduledThreadPool(1, r -> new Thread(r, "KeyLeakPatroller"));
+    private ExecutorService transactionPool; // 异步处理发起抢红包的多个网络通信操作的线程池
+    private final Random random = new Random(); // 用于将大红包随机拆分成若干小红包
+
+    @PostConstruct
+    private void init() throws NoSuchFieldException, IllegalAccessException {
+        // 初始化本地缓存
+        this.cache = new ConcurrentLruLocalCache<>(cacheCapacity);
+        // 初始化原子整数Map
+        this.atomicMap = new ConcurrentHashMap<>(atomicMapCapacity, 1.0f);
+        // 初始化线程池
+        this.transactionPool = new ThreadPoolExecutor(coreTransactionPoolSize, maxTransactionPoolSize, 60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(queueCapacity), r -> new Thread(r, "TransactionHandler"), new ThreadPoolExecutor.CallerRunsPolicy());
+        // 巡逻线程，定期检查原子整数Map中是否存在泄漏
+        // 如果一个由低活跃红包产生的key没有被用户主动移除，并且Redis的key过期事件回调失败，那么这个key会在原子整数Map中永久存在并且无法访问，因此需要定期检查，避免泄漏
+        scheduledPool.scheduleAtFixedRate(() -> {
+            // 获取原子整数Map的快照
+            Enumeration<String> keys = atomicMap.keys();
+            while (keys.hasMoreElements()) {
+                // 计算三小时前的毫秒时间戳
+                long threeHoursBefore = System.currentTimeMillis() - 3 * 60 * 60 * 100;
+                String key = keys.nextElement();
+                if (RedPacketKeyUtil.parseTimestamp(key) < threeHoursBefore) atomicMap.remove(key);
+            }
+            // 每60分钟检查一次
+        }, 60, 60, TimeUnit.MINUTES);
+    }
+
+    /**
+     * 由Redis消息监听器在监听到红包key过期事件后回调
+     */
+    public void removeFromAtomicMap(String key) {
+        atomicMap.remove(key);
+    }
+
+    /**
+     * 由Redis消息监听器在监听到红包结果key过期事件后回调
+     */
+    public void removeFromCache(String key) {
+        cache.remove(key);
+    }
+
+    /**
+     * 发起抢红包，根据大红包总金额和分派数量，预先分成若干小红包
+     * @param key 红包key
+     * @param amount 红包总金额，单位为分
+     * @param shareNum 拆分小红包份数
+     * @param expireTime 红包过期时长，单位为秒
+     */
+    public void publish(String key, String userId, int amount, int shareNum, int expireTime) {
+        // 执行发起抢红包前的扩展方法
+        extensionComposite.beforePublish(userId, amount, shareNum, expireTime);
+
+        int tmp = amount;
+        // 二倍均值算法
+        String[] arr = new String[shareNum];
+        int decr;
+        for (int i = shareNum; i > 1; i--) {
+            amount -= (decr = random.nextInt(1, (amount / i) << 1));
+            arr[i - 1] = String.valueOf(decr);
+        }
+        arr[0] = String.valueOf(amount);
+
+        // 使用线程池异步处理多个网络通信操作
+        // 开启事务，当消息和Redis的key均创建成功后，提交账户操作
+        transactionTemplate.execute(new TransactionCallbackWithoutResult() {
+            @Override
+            protected void doInTransactionWithoutResult(TransactionStatus status) {
+                // 为了避免恶意攻击产生大量垃圾消息和key，先同步扣减账户余额
+                try {
+                    if (accountMapper.decreaseBalance(userId, tmp) != 1) throw new IllegalAccountException(userId);
+                } catch (DataIntegrityViolationException e) {
+                    throw new BalanceNotEnoughException(userId, tmp);
+                }
+                // 发送延时消息，用于结算
+                FutureTask<Integer> messageFuture = new FutureTask<>(
+                        () -> rocketMQTemplate.syncSendDelayTimeSeconds("RedPacketSettlement", MessageBuilder.withPayload(key).build(), expireTime)
+                                .getSendStatus() == SendStatus.SEND_OK ? 1 : null
+                );
+                // 创建红包key
+                FutureTask<Integer> keyFuture = new FutureTask<>(
+                        () -> {
+                            try {
+                                redPacketDao.publish(key, arr, expireTime);
+                                return 1;
+                            } catch (Exception e) {
+                                return null;
+                            }
+                        }
+                );
+                transactionPool.submit(messageFuture);
+                transactionPool.submit(keyFuture);
+                try {
+                    if (messageFuture.get() == null) throw new RuntimeException("延时消息发送失败");
+                    if (keyFuture.get() == null) throw new RuntimeException("红包key创建失败");
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+
+        // 获取红包key对应的原子整数，初始值为红包份数
+        AtomicInteger i = atomicPool.poll();
+        if (i != null) {
+            i.set(shareNum);
+            atomicMap.put(key, i);
+        } else if (atomicMapSize.getAndIncrement() < atomicMapCapacity) {
+            atomicMap.put(key, new AtomicInteger(shareNum));
+        }
+
+        // 执行发起抢红包后的扩展方法
+        extensionComposite.afterPublish(userId, amount, shareNum, expireTime);
+    }
+
+    /**
+     * 参与抢红包
+     * @param key 红包key
+     * @param userId 抢红包用户ID
+     */
+    public RedPacketResult<ShareResult> share(String key, String userId) {
+        // 执行参与抢红包前的扩展方法
+        extensionComposite.beforeShare(key, userId);
+
+        Map<String, String> mapResult = null;
+        ShareResult shareResult = null;
+        // 设置最大重试次数，防止缓存穿透导致的死循环
+        int tryTimes = 0;
+        while (mapResult == null && shareResult == null && tryTimes++ <= maxTryTimes) {
+            // 如果在本地缓存中找不到对应的key，则准备访问Redis
+            if ((mapResult = cache.get(key)) == null) {
+                AtomicInteger count;
+                int decr = 0;
+                // 如果在原子整数Map中找不到对应的key，表示红包已经抢完或者系统中存在大量红包，可以通过竞争锁访问Redis回写本地缓存
+                if ((count = atomicMap.get(key)) == null || (decr = count.decrementAndGet()) < 0) {
+                    // 锁住key对应的字符串常量对象
+                    synchronized (key.intern()) {
+                        // 如果在本地缓存中仍找不到对应的key，则访问Redis
+                        if ((mapResult = cache.get(key)) == null) {
+                            shareResult = redPacketDao.share(key, userId);
+                            // 如果返回结果为空，表明请求超时，正常释放锁，进入下一轮循环重试
+                            // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
+                            if (shareResult != null && shareResult.getStatus() == 0) {
+                                // 移除预生成结果占位项
+                                mapResult = shareResult.getResult();
+                                mapResult.remove(RESULT_KEY_PLACEHOLDER);
+                                cache.put(key, mapResult);
+                            }
+                        }
+                    }
+                    // 由第一个抢不到红包的用户负责移除红包key对应的原子整数
+                    AtomicInteger i;
+                    if (count != null && decr == -1 && (i = atomicMap.remove(key)) != null) atomicPool.offer(i);
+                } else {
+                    // 原子整数扣减到负数之前，都可以不必竞争锁，直接访问Redis
+                    shareResult = redPacketDao.share(key, userId);
+                    // 如果返回结果为空，表明请求超时，进入下一轮循环重试
+                    // 如果原子整数还没扣减到负数，但是已经产生了红包结果，说明红包没有抢完就过期，移除红包key对应的原子整数
+                    AtomicInteger i;
+                    if (shareResult != null && shareResult.getResult() != null && (i = atomicMap.remove(key)) != null) atomicPool.offer(i);
+                }
+            }
+        }
+
+        // 对结果进行判断和进一步处理
+        RedPacketResult<ShareResult> redPacketResult;
+        if (mapResult == null && shareResult == null) {
+            redPacketResult = RedPacketResult.error("没有找到红包，可能是网络异常或已经结束");
+        } else {
+            if (shareResult != null) {
+                // 如果从Redis查询到结果
+                if (shareResult.getStatus() == 0) {
+                    // 如果标识为0，表示抢不到红包或红包结束后的结果查询，进一步判断用户是否抢到过红包，如果用户抢到过则将标识设置为1
+                    // 如果红包结果为空集，表示红包结果key已经过期，直接返回空
+                    if (shareResult.getResult().size() == 0) {
+                        shareResult.setMsg("您查看的红包在较早的时候已经结束");
+                        log.info("用户{}查询一个过早的红包结果", userId);
+                    } else if (shareResult.getResult().get(userId) != null) {
+                        shareResult.setStatus(1);
+                        shareResult.setMsg("抢红包已经结束了，您抢到过红包");
+                        log.info("用户{}抢到红包，查询结果", userId);
+                    } else {
+                        shareResult.setMsg("抢红包已经结束了，您没抢到红包");
+                        log.info("用户{}没抢到红包，查询结果", userId);
+                    }
+                } else if (shareResult.getStatus() == 1) {
+                    // 如果标识为1，表示抢到红包，此时抢红包仍未结束，直接返回，由前端将结果缓存到用户设备上
+                    log.info("用户{}抢到红包，耗时{}秒", userId, shareResult.getTimeCost() / 1000f);
+                } else {
+                    // 如果标识为-1，表示已经参与过抢红包，由前端返回缓存在用户设备上的抢红包成功结果
+                    log.info("用户{}重复参与抢红包", userId);
+                }
+            } else {
+                // 如果从本地缓存查询到结果，进一步判断用户是否抢到过红包，如果用户抢到过则将标识设置为1
+                if (mapResult.get(userId) != null) {
+                    shareResult = ShareResult.shareSuccess("抢红包已经结束了，您抢到过红包", mapResult, 0L);
+                    log.info("用户{}抢到红包，查询结果", userId);
+                } else {
+                    shareResult = ShareResult.shareFail("抢红包已经结束了，您没抢到红包", mapResult);
+                    log.info("用户{}没抢到红包，查询结果", userId);
+                }
+            }
+            redPacketResult = RedPacketResult.shareSuccess(shareResult);
+        }
+
+        // 执行参与抢红包后的扩展方法
+        return extensionComposite.afterShare(key, userId, redPacketResult);
+    }
+}
