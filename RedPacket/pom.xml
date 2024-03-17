@@ -41,6 +41,12 @@
             <artifactId>local-cache</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
+        <!-- 配置文件的配置项自动提示工具依赖 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>

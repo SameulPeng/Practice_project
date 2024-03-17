@@ -1,7 +1,9 @@
 package com.practice.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -12,11 +14,13 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  * Redis配置类
  */
 @Configuration
+@Profile("redis")
 public class RedisConfig {
     /**
      * 注册一个Redis消息监听器容器组件，用于维护Redis消息监听器
      */
     @Bean
+    @ConditionalOnProperty("spring.redis.key-listener")
     RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory redisConnectionFactory) {
         RedisMessageListenerContainer listenerContainer = new RedisMessageListenerContainer();
         listenerContainer.setConnectionFactory(redisConnectionFactory);

@@ -1,10 +1,11 @@
 package com.practice.dao;
 
 import com.practice.common.result.ShareResult;
+import com.practice.config.RedPacketProperties;
 import com.practice.util.RedPacketKeyUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -20,33 +21,31 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.*;
 
-@Repository
 @Slf4j
+@Repository
+@Profile("biz")
 public class RedPacketDao {
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
     @Autowired
     @SuppressWarnings("rawtypes")
     private RedisTemplate redisTemplate;
-    @Value("${red-packet.key.prefix}")
-    private String RED_PACKET_KEY_PREFIX; // Redis中的红包key的业务前缀
-    @Value("${red-packet.key.result-prefix}")
-    private String RESULT_KEY_PREFIX; // Redis中的红包结果key的业务前缀
-    @Value("${red-packet.key.result-placeholder}")
-    private String RESULT_KEY_PLACEHOLDER; // 预生成红包结果key所使用的占位项
+    @Autowired
+    private RedPacketProperties redPacketProperties; // 配置参数类
     private String shareScript; // Redis抢红包Lua脚本
-    @Value("${red-packet.share.timeout}")
-    private long shareTimeout; // Redis抢红包的响应超时时间
-    @Value("${red-packet.share.threads.min}")
-    private int corePoolSize; // 线程池核心线程数
-    @Value("${red-packet.share.threads.max}")
-    private int maxPoolSize; // 线程池最大线程数
     private ThreadPoolExecutor pool; // 控制Redis抢红包响应超时的线程池
 
     @PostConstruct
     private void init() {
         // 初始化线程池
-        this.pool = new ThreadPoolExecutor(corePoolSize, maxPoolSize, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), r -> new Thread(r, "FutureHandler"));
+        this.pool = new ThreadPoolExecutor(
+                redPacketProperties.getPublish().getMinThreads(),
+                redPacketProperties.getPublish().getMaxThreads(),
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(),
+                r -> new Thread(r, "FutureHandler")
+        );
+
         // 初始化Redis抢红包Lua脚本
         try (BufferedReader br = new BufferedReader(new FileReader(
                 ClassUtils.getDefaultClassLoader().getResource("").getPath() + "lua/share.lua"))) {
@@ -81,10 +80,10 @@ public class RedPacketDao {
         }
         sb.append(") redis.call('expire', KEYS[1], ARGV[1])")
                 // 预生成红包结果key，保证即使没有用户参与抢红包也能结算退款
-                .append(" redis.call('hset', KEYS[2], '").append(RESULT_KEY_PLACEHOLDER).append("', '0')");
+                .append(" redis.call('hset', KEYS[2], '").append(redPacketProperties.getBiz().getResultPlaceholder()).append("', '0')");
 
-        String redPacketKey = RED_PACKET_KEY_PREFIX + key;
-        String resultKey = RESULT_KEY_PREFIX + key;
+        String redPacketKey = redPacketProperties.getBiz().getKeyPrefix() + key;
+        String resultKey = redPacketProperties.getBiz().getResultPrefix() + key;
 
         stringRedisTemplate.execute(new DefaultRedisScript<>(sb.toString()), Arrays.asList(redPacketKey, resultKey), String.valueOf(expireTime));
 
@@ -100,8 +99,8 @@ public class RedPacketDao {
     @Nullable
     @SuppressWarnings("unchecked")
     public ShareResult share(String key, String userId) {
-        String redPacketKey = RED_PACKET_KEY_PREFIX + key;
-        String resultKey = RESULT_KEY_PREFIX + key;
+        String redPacketKey = redPacketProperties.getBiz().getKeyPrefix() + key;
+        String resultKey = redPacketProperties.getBiz().getResultPrefix() + key;
 
         // 通过Future进行响应超时控制，防止无限等待造成死锁
         FutureTask<Long> future = new FutureTask<>(() ->
@@ -111,7 +110,7 @@ public class RedPacketDao {
 
         Long result;
         try {
-            result = future.get(shareTimeout, TimeUnit.MILLISECONDS);
+            result = future.get(redPacketProperties.getShare().getTimeout(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         } catch (TimeoutException e) {

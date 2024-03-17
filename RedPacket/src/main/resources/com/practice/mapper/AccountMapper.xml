@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.practice.mapper.AccountMapper">
+    <!-- 批量执行增加账户余额的SQL -->
+    <update id="batchIncreaseBalance">
+        <foreach collection="resultMap" index="userId" item="amount" separator=";">
+            update account set balance = balance + #{amount} where user_id = #{userId}
+        </foreach>
+    </update>
+</mapper>

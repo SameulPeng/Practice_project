@@ -5,57 +5,45 @@ import com.practice.common.exception.BalanceNotEnoughException;
 import com.practice.common.exception.IllegalAccountException;
 import com.practice.common.result.RedPacketResult;
 import com.practice.common.result.ShareResult;
+import com.practice.config.RedPacketProperties;
 import com.practice.dao.RedPacketDao;
 import com.practice.extension.RedPacketExtensionComposite;
-import com.practice.mapper.AccountMapper;
+import com.practice.mapper.AccountInterface;
 import com.practice.util.RedPacketKeyUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.annotation.PostConstruct;
 import java.util.Enumeration;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Service
 @Slf4j
+@Service
+@Profile("biz")
 public class RedPacketService {
     @Autowired
     private RedPacketDao redPacketDao;
     @Autowired
-    private AccountMapper accountMapper;
+    private AccountInterface accountInterface;
     @Autowired
     private RocketMQTemplate rocketMQTemplate;
     @Autowired
     private TransactionTemplate transactionTemplate;
     @Autowired
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
-    @Value("${red-packet.key.result-placeholder}")
-    private String RESULT_KEY_PLACEHOLDER; // 预生成红包结果key所使用的占位项
-    @Value("${red-packet.share.max-try-times}")
-    private int maxTryTimes; // 同一个抢红包请求的重试次数，超过次数后没有获得合理结果则直接响应错误信息
-    @Value("${red-packet.cache.capacity}")
-    private int cacheCapacity; // 本地缓存容量
-    @Value("${red-packet.atomic.capacity}")
-    private int atomicMapCapacity; // 原子整数Map容量
-    @Value("${red-packet.publish.threads.min}")
-    private int coreTransactionPoolSize; // 线程池核心线程数
-    @Value("${red-packet.publish.threads.max}")
-    private int maxTransactionPoolSize; // 线程池最大线程数
-    @Value("${red-packet.publish.queue-size}")
-    private int queueCapacity; // 线程池阻塞队列容量
+    @Autowired
+    private RedPacketProperties redPacketProperties; // 配置参数类
     private ConcurrentLruLocalCache<Map<String, String>> cache; // 本地缓存，存储红包key对应的抢红包结果
     private ConcurrentHashMap<String, AtomicInteger> atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
     private final AtomicInteger atomicMapSize = new AtomicInteger(); // 原子整数Map当前大小
@@ -63,30 +51,38 @@ public class RedPacketService {
     private final ScheduledExecutorService scheduledPool = // 检查原子整数Map泄漏问题的巡逻线程的线程池
             Executors.newScheduledThreadPool(1, r -> new Thread(r, "KeyLeakPatroller"));
     private ExecutorService transactionPool; // 异步处理发起抢红包的多个网络通信操作的线程池
-    private final Random random = new Random(); // 用于将大红包随机拆分成若干小红包
 
     @PostConstruct
     private void init() throws NoSuchFieldException, IllegalAccessException {
         // 初始化本地缓存
-        this.cache = new ConcurrentLruLocalCache<>(cacheCapacity);
+        this.cache = new ConcurrentLruLocalCache<>(redPacketProperties.getShare().getCacheSize());
         // 初始化原子整数Map
-        this.atomicMap = new ConcurrentHashMap<>(atomicMapCapacity, 1.0f);
+        this.atomicMap = new ConcurrentHashMap<>(redPacketProperties.getPublish().getAtomicMapSize(), 1.0f);
+
         // 初始化线程池
-        this.transactionPool = new ThreadPoolExecutor(coreTransactionPoolSize, maxTransactionPoolSize, 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(queueCapacity), r -> new Thread(r, "TransactionHandler"), new ThreadPoolExecutor.CallerRunsPolicy());
+        this.transactionPool = new ThreadPoolExecutor(
+                redPacketProperties.getPublish().getMinThreads(),
+                redPacketProperties.getPublish().getMaxThreads(),
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(redPacketProperties.getPublish().getQueueSize()),
+                r -> new Thread(r, "TransactionHandler"),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+
         // 巡逻线程，定期检查原子整数Map中是否存在泄漏
         // 如果一个由低活跃红包产生的key没有被用户主动移除，并且Redis的key过期事件回调失败，那么这个key会在原子整数Map中永久存在并且无法访问，因此需要定期检查，避免泄漏
+        int interval = redPacketProperties.getPublish().getAtomicLeakPatrolInterval();
         scheduledPool.scheduleAtFixedRate(() -> {
             // 获取原子整数Map的快照
             Enumeration<String> keys = atomicMap.keys();
+            // 计算三小时前的毫秒时间戳
+            long threeHoursBefore = System.currentTimeMillis() - 3 * 60 * 60 * 100;
             while (keys.hasMoreElements()) {
-                // 计算三小时前的毫秒时间戳
-                long threeHoursBefore = System.currentTimeMillis() - 3 * 60 * 60 * 100;
                 String key = keys.nextElement();
                 if (RedPacketKeyUtil.parseTimestamp(key) < threeHoursBefore) atomicMap.remove(key);
             }
-            // 每60分钟检查一次
-        }, 60, 60, TimeUnit.MINUTES);
+            // 定期检查一次
+        }, interval, interval, TimeUnit.MINUTES);
     }
 
     /**
@@ -115,6 +111,8 @@ public class RedPacketService {
         extensionComposite.beforePublish(userId, amount, shareNum, expireTime);
 
         int tmp = amount;
+        // 用于将大红包随机拆分成若干小红包，相比Random类，能够减少竞争
+        ThreadLocalRandom random = ThreadLocalRandom.current();
         // 二倍均值算法
         String[] arr = new String[shareNum];
         int decr;
@@ -131,7 +129,7 @@ public class RedPacketService {
             protected void doInTransactionWithoutResult(TransactionStatus status) {
                 // 为了避免恶意攻击产生大量垃圾消息和key，先同步扣减账户余额
                 try {
-                    if (accountMapper.decreaseBalance(userId, tmp) != 1) throw new IllegalAccountException(userId);
+                    if (accountInterface.decreaseBalance(userId, tmp) != 1) throw new IllegalAccountException(userId);
                 } catch (DataIntegrityViolationException e) {
                     throw new BalanceNotEnoughException(userId, tmp);
                 }
@@ -167,7 +165,7 @@ public class RedPacketService {
         if (i != null) {
             i.set(shareNum);
             atomicMap.put(key, i);
-        } else if (atomicMapSize.getAndIncrement() < atomicMapCapacity) {
+        } else if (atomicMapSize.getAndIncrement() < redPacketProperties.getPublish().getAtomicMapSize()) {
             atomicMap.put(key, new AtomicInteger(shareNum));
         }
 
@@ -188,7 +186,7 @@ public class RedPacketService {
         ShareResult shareResult = null;
         // 设置最大重试次数，防止缓存穿透导致的死循环
         int tryTimes = 0;
-        while (mapResult == null && shareResult == null && tryTimes++ <= maxTryTimes) {
+        while (mapResult == null && shareResult == null && tryTimes++ <= redPacketProperties.getShare().getMaxTryTimes()) {
             // 如果在本地缓存中找不到对应的key，则准备访问Redis
             if ((mapResult = cache.get(key)) == null) {
                 AtomicInteger count;
@@ -205,7 +203,7 @@ public class RedPacketService {
                             if (shareResult != null && shareResult.getStatus() == 0) {
                                 // 移除预生成结果占位项
                                 mapResult = shareResult.getResult();
-                                mapResult.remove(RESULT_KEY_PLACEHOLDER);
+                                mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
                                 cache.put(key, mapResult);
                             }
                         }

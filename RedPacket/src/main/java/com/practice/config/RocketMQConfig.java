@@ -4,11 +4,13 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 /**
  * RocketMQ配置类
  */
 @Configuration
+@Profile("rocketmq")
 public class RocketMQConfig {
     @Bean
     public RocketMQTemplate rocketMQTemplate() {

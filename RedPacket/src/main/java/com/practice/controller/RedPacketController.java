@@ -3,30 +3,34 @@ package com.practice.controller;
 import com.practice.common.result.PublishResult;
 import com.practice.common.result.RedPacketResult;
 import com.practice.common.result.ShareResult;
+import com.practice.config.RedPacketProperties;
 import com.practice.pojo.RedPacketInfo;
 import com.practice.service.RedPacketService;
 import com.practice.util.RedPacketKeyUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.*;
 
+import javax.annotation.PostConstruct;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 @Slf4j
 @RestController
+@Profile("biz")
 public class RedPacketController {
     @Autowired
     private RedPacketService redPacketService;
-    private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"); // 抢红包发起日期时间的格式化
-    @Value("${red-packet.service-id}")
-    private String serviceId; // JVM编号
-    @Value("${red-packet.max-expire-time}")
-    private int maxExpireTime; // 红包最长有效期，单位为秒
-    @Value("${red-packet.min-expire-time}")
-    private int minExpireTime; // 红包最短有效期，单位为秒
+    @Autowired
+    private RedPacketProperties redPacketProperties; // 配置参数类
+    private DateTimeFormatter dateTimeFormatter; // 抢红包发起日期时间的格式化类，线程安全
+
+    @PostConstruct
+    private void init() {
+        dateTimeFormatter = DateTimeFormatter.ofPattern(redPacketProperties.getDateTimePattern());
+    }
 
     /**
      * 发起抢红包
@@ -38,20 +42,31 @@ public class RedPacketController {
         int amount = info.getAmount();
         int shareNum = info.getShareNum();
         int expireTime = info.getExpireTime();
+        // 检验总金额设置是否超出范围
+        if (amount < redPacketProperties.getBiz().getMinAmount()
+                || amount > redPacketProperties.getBiz().getMaxAmount()) {
+            log.warn("用户{}发起抢红包，总金额{}设置不合法", userId, amount);
+            return RedPacketResult.error("总金额设置超出范围，抢红包发起失败");
+        }
         // 校验有效期设置是否超出范围
-        if (expireTime > maxExpireTime || expireTime < minExpireTime) {
+        if (expireTime < redPacketProperties.getBiz().getMinExpireTime()
+                || expireTime > redPacketProperties.getBiz().getMaxExpireTime()) {
+            log.warn("用户{}发起抢红包，有效期{}设置不合法", userId, expireTime);
             return RedPacketResult.error("有效期设置超出范围，抢红包发起失败");
         }
         // 使用JVM编号、线程ID、用户ID、红包金额、当前时间戳生成红包key
         long timestamp = System.currentTimeMillis();
-        String key = RedPacketKeyUtil.generateKey(serviceId, Thread.currentThread().getId(), userId, amount, timestamp);
+        String key = RedPacketKeyUtil.generateKey(redPacketProperties.getServiceId(), Thread.currentThread().getId(), userId, amount, timestamp);
 
         redPacketService.publish(key, userId, amount, shareNum, expireTime);
 
-        return RedPacketResult.publishSuccess(key, PublishResult.publishSuccess(
-                dateTimeFormatter.format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault())),
-                amount, shareNum, expireTime
-        ));
+        return RedPacketResult.publishSuccess(
+                key,
+                PublishResult.publishSuccess(
+                    dateTimeFormatter.format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault())),
+                    amount, shareNum, expireTime
+                )
+        );
     }
 
     /**

@@ -4,8 +4,10 @@ import com.practice.common.result.RedPacketResult;
 import com.practice.common.result.ShareResult;
 import com.practice.extension.RedPacketExtension;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
+/**
+ * 抢红包业务扩展测试类
+ */
 @Slf4j
 //@Component
 public class RedPacketExtensionTest implements RedPacketExtension {
