@@ -43,8 +43,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     @Override
     @SuppressWarnings("unchecked")
     public void onMessage(String key) {
-        String userIdAndAmount = RedPacketKeyUtil.getUserIdAndAmount(key);
-        String publisherId = RedPacketKeyUtil.parseUserId(userIdAndAmount);
+        String publisherId = RedPacketKeyUtil.parseUserId(key);
         String resultKey = redPacketProperties.getBiz().getResultPrefix() + key;
 
         // todo 原子性
@@ -53,7 +52,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         if (expire != null && expire == -1) {
             Map<String, String> mapResult = redisTemplate.opsForHash().entries(resultKey);
             // 整理抢红包结果
-            int amount = RedPacketKeyUtil.parseAmount(userIdAndAmount);
+            int amount = RedPacketKeyUtil.parseAmount(key);
             Map<String, Integer> result = settle(mapResult, amount, publisherId);
             // 开启事务，当Redis中的key成功设置过期时间后，提交账户操作
             transactionTemplate.execute(new TransactionCallbackWithoutResult() {
@@ -87,7 +86,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         if (amount > 0) result.put(publisherId, amount);
 
         log.info("结算结果：{}", result);
-
         return result;
     }
 }

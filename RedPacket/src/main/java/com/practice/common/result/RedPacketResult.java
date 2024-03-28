@@ -12,25 +12,28 @@ import lombok.ToString;
 @Setter
 @ToString
 public class RedPacketResult<T> {
-    // 响应标识，1表示发红包成功，2表示参与抢红包成功，其他数值表示响应错误
-    private final int status;
-    // 响应错误信息
-    private final String msg;
-    // 结果
-    private final T result;
+    private final int status; // 响应标识，1表示发起抢红包成功，2表示参与抢红包成功，其他数值表示响应错误
+    private final String msg; // 响应错误信息
+    private final T result; // 结果
 
-    // 发红包成功，结果返回发布时间、金额、份数、有效期等信息
-    public static <T> RedPacketResult<T> publishSuccess(String msg, T result) {
+    /**
+     * 发起抢红包成功，结果返回发起日期时间、金额、份数、有效期等信息
+     */
+    public static <E> RedPacketResult<E> publishSuccess(String msg, E result) {
         return new RedPacketResult<>(1, msg, result);
     }
 
-    // 参与抢红包成功，结果返回金额、用时、红包结果等信息
-    public static <T> RedPacketResult<T> shareSuccess(T result) {
+    /**
+     * 参与抢红包成功，结果返回金额、用时、红包结果等信息
+     */
+    public static <E> RedPacketResult<E> shareSuccess(E result) {
         return new RedPacketResult<>(2, null, result);
     }
 
-    // 响应错误
-    public static <T> RedPacketResult<T> error(String msg) {
+    /**
+     * 响应错误
+     */
+    public static <E> RedPacketResult<E> error(String msg) {
         return new RedPacketResult<>(0, msg, null);
     }
 

@@ -1,11 +1,14 @@
 package com.practice.controller;
 
+import com.practice.common.exception.BalanceNotEnoughException;
+import com.practice.common.exception.IllegalAccountException;
 import com.practice.common.result.PublishResult;
 import com.practice.common.result.RedPacketResult;
 import com.practice.common.result.ShareResult;
 import com.practice.config.RedPacketProperties;
 import com.practice.pojo.RedPacketInfo;
 import com.practice.service.RedPacketService;
+import com.practice.util.DateTimeUtil;
 import com.practice.util.RedPacketKeyUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,8 +16,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.PostConstruct;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 @Slf4j
@@ -54,17 +55,20 @@ public class RedPacketController {
             log.warn("用户{}发起抢红包，有效期{}设置不合法", userId, expireTime);
             return RedPacketResult.error("有效期设置超出范围，抢红包发起失败");
         }
-        // 使用JVM编号、线程ID、用户ID、红包金额、当前时间戳生成红包key
         long timestamp = System.currentTimeMillis();
-        String key = RedPacketKeyUtil.generateKey(redPacketProperties.getServiceId(), Thread.currentThread().getId(), userId, amount, timestamp);
+        // 使用JVM编号、线程ID、用户ID、红包金额、当前时间戳生成红包key
+        String key = RedPacketKeyUtil.generateKey(
+                redPacketProperties.getServiceId(), Thread.currentThread().getId(),
+                amount, expireTime, timestamp, userId
+        );
 
         redPacketService.publish(key, userId, amount, shareNum, expireTime);
 
         return RedPacketResult.publishSuccess(
                 key,
                 PublishResult.publishSuccess(
-                    dateTimeFormatter.format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault())),
-                    amount, shareNum, expireTime
+                        DateTimeUtil.millis2DateTime(dateTimeFormatter, timestamp),
+                        amount, shareNum, expireTime
                 )
         );
     }
@@ -77,5 +81,34 @@ public class RedPacketController {
     @GetMapping("/redpacket/share")
     public RedPacketResult<ShareResult> share(@RequestParam String key, @RequestParam String userId) {
         return redPacketService.share(key, userId);
+    }
+
+    /**
+     * 处理发起抢红包的余额不足的异常
+     */
+    @ExceptionHandler(BalanceNotEnoughException.class)
+    public RedPacketResult<PublishResult> balanceNotEnough(BalanceNotEnoughException e) {
+        String userId = e.getUserId();
+        float amount = e.getAmount() / 100f;
+        log.info("用户{}余额不足{}, 抢红包发起失败", userId, amount);
+        return RedPacketResult.error("用户" + userId + "余额不足" + amount + "，抢红包发起失败");
+    }
+
+    /**
+     * 处理发起抢红包的账户不存在的异常
+     */
+    @ExceptionHandler(IllegalAccountException.class)
+    public RedPacketResult<PublishResult> illegalAccount(IllegalAccountException e) {
+        String userId = e.getUserId();
+        log.info("用户{}账户不存在，抢红包发起失败", userId);
+        return RedPacketResult.error("用户" + userId + "账户不存在，抢红包发起失败");
+    }
+
+    /**
+     * 处理未知异常
+     */
+    @ExceptionHandler(Throwable.class)
+    public RedPacketResult<Object> unhandled() {
+        return RedPacketResult.error("未知错误");
     }
 }
