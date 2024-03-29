@@ -39,12 +39,16 @@ public class RedPacketExpirationListener extends KeyExpirationEventMessageListen
         String resultPrefix = redPacketProperties.getBiz().getResultPrefix();
 
         if (key.startsWith(keyPrefix)) {
-            // 去除红包key前缀，从原子整数Map中移除
-            redPacketService.removeFromAtomicMap(key.substring(keyPrefix.length()));
+            // 去除红包key前缀
+            key = key.substring(keyPrefix.length());
+            // 从原子整数Map中移除
+            redPacketService.removeFromAtomicMap(key);
             // 执行红包结束且未抢完时的扩展方法
             extensionComposite.onExpire(key);
         } else if (key.startsWith(resultPrefix)) {
-            // 去除红包结果key前缀，从本地缓存中移除
+            // 去除红包结果key前缀
+            key = key.substring(keyPrefix.length());
+            // 从本地缓存中移除
             redPacketService.removeFromCache(key.substring(resultPrefix.length()));
             // 执行红包结果移除时的扩展方法
             extensionComposite.onRemove(key);

@@ -35,7 +35,7 @@ public class RedPacketController {
 
     /**
      * 发起抢红包
-     * @param info 红包总金额（单位为分）、拆分小红包份数、红包过期时长（单位为秒）
+     * @param info 发起抢红包用户ID、红包总金额（单位为分）、拆分小红包份数、红包过期时长（单位为秒）
      */
     @PostMapping("/redpacket/publish")
     public RedPacketResult<PublishResult> publish(@RequestBody RedPacketInfo info) {

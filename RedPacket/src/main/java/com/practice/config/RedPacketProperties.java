@@ -100,8 +100,8 @@ public class RedPacketProperties {
         private int minThreads = 5; // 发起抢红包线程池核心线程数
         private int maxThreads = 200; // 发起抢红包线程池最大线程数
         private int queueSize = 2048; // 发起抢红包线程池阻塞队列大小
-        private int atomicMapSize = 128; // 原子整数Map大小
-        private int atomicLeakPatrolInterval = 3600; // 原子整数Map泄漏检查时间间隔，单位为秒
+        private int atomicMaxCount = 128; // 原子整数数量上限
+        private int atomicLeakPatrolInterval = 86400; // 原子整数Map泄漏检查时间间隔，单位为秒
     }
 
     /**

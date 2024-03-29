@@ -53,7 +53,7 @@ public class RedPacketDao {
             int len;
             StringBuilder sb = new StringBuilder();
             while ((len = br.read(chars)) != -1) {
-                sb.append(String.valueOf(chars, 0, len));
+                sb.append(chars, 0, len);
             }
             shareScript = sb.toString();
         } catch (IOException e) {
@@ -87,7 +87,7 @@ public class RedPacketDao {
 
         stringRedisTemplate.execute(new DefaultRedisScript<>(sb.toString()), Arrays.asList(redPacketKey, resultKey), String.valueOf(expireTime));
 
-        log.info("抢红包发起成功，有效期{}秒：{}", expireTime, key);
+        log.info("红包key成功，有效期{}秒：{}", expireTime, key);
     }
 
     /**
@@ -118,6 +118,7 @@ public class RedPacketDao {
             return null;
         }
 
+        if (result == null) return null;
         if (result == 0) {
             // 如果结果为0，表示抢不到红包或红包结束后的结果查询
             Map<String, String> mapResult = redisTemplate.opsForHash().entries(resultKey);

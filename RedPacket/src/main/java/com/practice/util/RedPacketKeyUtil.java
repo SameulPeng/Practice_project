@@ -4,29 +4,30 @@ package com.practice.util;
  * 红包Key字符串处理工具类
  */
 public class RedPacketKeyUtil {
+    private final static int SERVICE_ID_CHARS = 2; // JVM编号使用两个字节，不重复范围为0到4095
+    private final static int THREAD_ID_CHARS = 2; // 线程ID使用两个字节，不重复范围为0到4095
+    private final static int AMOUNT_CHARS = 5; // 红包总金额使用5个字节，上限为1073741823，约一千万元
+    private final static int EXPIRE_TIME_CHARS = 4; // 有效期使用4个字节，上限为16777215，约194天
+    private final static int TIMESTAMP_CHARS = 7; // 时间戳使用7个字节，上限为4398046511104，约139年（从1970年1月1日0时0分0秒起）
+
     /**
      * 生成红包key
      * @param serviceId JVM编号
      * @param threadId  线程ID
-     * @param userId    发起用户ID
      * @param amount    红包总金额
-     * @param expireTime 有效期
-     * @param timestamp 当前毫秒时间戳
+     * @param expireTime 红包有效期
+     * @param timestamp 发起毫秒时间戳
+     * @param userId    发起用户ID
      * @return 红包key
      */
     public static String generateKey(int serviceId, long threadId, int amount, int expireTime, long timestamp, String userId) {
-        // JVM编号使用两个字节，不重复范围为0到4095
-        String s1 = i2chars(serviceId, 2);
-        // 线程ID使用两个字节，不重复范围为0到4095
-        String s2 = i2chars(threadId, 2);
-        // 红包总金额使用5个字节，上限为1073741823，约一千万元
-        String s3 = i2chars(amount, 5);
-        // 有效期使用4个字节，上限为16777215，约194天
-        String s4 = i2chars(expireTime, 4);
-        // 时间戳使用7个字节，上限为4398046511104，约139年（从1970年1月1日0时0分0秒起）
-        String s5 = i2chars(timestamp, 7);
+        String s1 = i2chars(serviceId, SERVICE_ID_CHARS);
+        String s2 = i2chars(threadId, THREAD_ID_CHARS);
+        String s3 = i2chars(amount, AMOUNT_CHARS);
+        String s4 = i2chars(expireTime, EXPIRE_TIME_CHARS);
+        String s5 = i2chars(timestamp, TIMESTAMP_CHARS);
 
-        // 格式为 2字节 + 2字节 + 5字节 + 4字节 + 7字节 + 用户ID
+        // 格式为： JVM编号 + 线程ID + 红包总金额 + 红包有效期 + 发起毫秒时间戳 + 发起用户ID
         return s1 + s2 + s3 + s4 + s5 + userId;
     }
 
@@ -36,7 +37,10 @@ public class RedPacketKeyUtil {
      * @return 红包总金额
      */
     public static int parseAmount(String key) {
-        return (int) chars2i(key.substring(4, 9));
+        return (int) chars2i(key.substring(
+                SERVICE_ID_CHARS + THREAD_ID_CHARS,
+                SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS
+        ));
     }
 
     /**
@@ -45,7 +49,10 @@ public class RedPacketKeyUtil {
      * @return 红包有效期
      */
     public static int parseExpireTime(String key) {
-        return (int) chars2i(key.substring(9, 13));
+        return (int) chars2i(key.substring(
+                SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS,
+                SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS
+        ));
     }
 
     /**
@@ -54,7 +61,10 @@ public class RedPacketKeyUtil {
      * @return 红包发起的毫秒时间戳
      */
     public static long parseTimestamp(String key) {
-        return chars2i(key.substring(13, 20));
+        return chars2i(key.substring(
+                SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS,
+                SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS + TIMESTAMP_CHARS
+        ));
     }
 
     /**
@@ -63,7 +73,7 @@ public class RedPacketKeyUtil {
      * @return 发起用户ID
      */
     public static String parseUserId(String key) {
-        return key.substring(20);
+        return key.substring(SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS + TIMESTAMP_CHARS);
     }
 
     /**
