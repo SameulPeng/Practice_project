@@ -4,7 +4,6 @@ import com.practice.common.exception.BalanceNotEnoughException;
 import com.practice.common.exception.IllegalAccountException;
 import com.practice.common.result.PublishResult;
 import com.practice.common.result.RedPacketResult;
-import com.practice.common.result.ShareResult;
 import com.practice.config.RedPacketProperties;
 import com.practice.pojo.RedPacketInfo;
 import com.practice.service.RedPacketService;
@@ -38,7 +37,8 @@ public class RedPacketController {
      * @param info 发起抢红包用户ID、红包总金额（单位为分）、拆分小红包份数、红包过期时长（单位为秒）
      */
     @PostMapping("/redpacket/publish")
-    public RedPacketResult<PublishResult> publish(@RequestBody RedPacketInfo info) {
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult publish(@RequestBody RedPacketInfo info) {
         String userId = info.getUserId();
         int amount = info.getAmount();
         int shareNum = info.getShareNum();
@@ -46,15 +46,23 @@ public class RedPacketController {
         // 检验总金额设置是否超出范围
         if (amount < redPacketProperties.getBiz().getMinAmount()
                 || amount > redPacketProperties.getBiz().getMaxAmount()) {
-            log.warn("用户{}发起抢红包，总金额{}设置不合法", userId, amount);
-            return RedPacketResult.error("总金额设置超出范围，抢红包发起失败");
+            log.warn("用户  {}  发起抢红包，总金额  {}  设置不合法", userId, amount);
+            return RedPacketResult.error(RedPacketResult.ErrorType.WRONG_AMOUNT);
+        }
+        // 校验小红包份数是否超出范围
+        if (shareNum < redPacketProperties.getBiz().getMinShareNum()
+                || shareNum > redPacketProperties.getBiz().getMaxShareNum()
+                || shareNum > amount) {
+            log.warn("用户 {} 发起抢红包，份数 {} 设置不合法", userId, shareNum);
+            return RedPacketResult.error(RedPacketResult.ErrorType.WRONG_SHARE_NUM);
         }
         // 校验有效期设置是否超出范围
         if (expireTime < redPacketProperties.getBiz().getMinExpireTime()
                 || expireTime > redPacketProperties.getBiz().getMaxExpireTime()) {
-            log.warn("用户{}发起抢红包，有效期{}设置不合法", userId, expireTime);
-            return RedPacketResult.error("有效期设置超出范围，抢红包发起失败");
+            log.warn("用户 {} 发起抢红包，有效期 {} 设置不合法", userId, expireTime);
+            return RedPacketResult.error(RedPacketResult.ErrorType.WRONG_EXPIRE_TIME);
         }
+
         long timestamp = System.currentTimeMillis();
         // 使用JVM编号、线程ID、用户ID、红包金额、当前时间戳生成红包key
         String key = RedPacketKeyUtil.generateKey(
@@ -79,7 +87,8 @@ public class RedPacketController {
      * @param userId 抢红包用户ID
      */
     @GetMapping("/redpacket/share")
-    public RedPacketResult<ShareResult> share(@RequestParam String key, @RequestParam String userId) {
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult share(@RequestParam String key, @RequestParam String userId) {
         return redPacketService.share(key, userId);
     }
 
@@ -87,28 +96,32 @@ public class RedPacketController {
      * 处理发起抢红包的余额不足的异常
      */
     @ExceptionHandler(BalanceNotEnoughException.class)
-    public RedPacketResult<PublishResult> balanceNotEnough(BalanceNotEnoughException e) {
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult balanceNotEnough(BalanceNotEnoughException e) {
         String userId = e.getUserId();
         float amount = e.getAmount() / 100f;
-        log.info("用户{}余额不足{}, 抢红包发起失败", userId, amount);
-        return RedPacketResult.error("用户" + userId + "余额不足" + amount + "，抢红包发起失败");
+        log.warn("用户 {} 余额不足 {} 元, 抢红包发起失败", userId, amount);
+        return RedPacketResult.error(RedPacketResult.ErrorType.BALANCE_NOT_ENOUGH);
     }
 
     /**
      * 处理发起抢红包的账户不存在的异常
      */
     @ExceptionHandler(IllegalAccountException.class)
-    public RedPacketResult<PublishResult> illegalAccount(IllegalAccountException e) {
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult illegalAccount(IllegalAccountException e) {
         String userId = e.getUserId();
-        log.info("用户{}账户不存在，抢红包发起失败", userId);
-        return RedPacketResult.error("用户" + userId + "账户不存在，抢红包发起失败");
+        log.warn("用户 {} 账户不存在，抢红包发起失败", userId);
+        return RedPacketResult.error(RedPacketResult.ErrorType.ILLEGAL_ACCOUNT);
     }
 
     /**
      * 处理未知异常
      */
     @ExceptionHandler(Throwable.class)
-    public RedPacketResult<Object> unhandled() {
-        return RedPacketResult.error("未知错误");
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult unhandled(Throwable e) {
+        log.error("未处理异常： {} ", e.getMessage());
+        return RedPacketResult.error(RedPacketResult.ErrorType.UNKNOWN_ERROR);
     }
 }

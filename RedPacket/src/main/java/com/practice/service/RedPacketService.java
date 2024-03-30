@@ -45,7 +45,7 @@ public class RedPacketService {
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
     @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
-    private ConcurrentLruLocalCache<Map<String, String>> cache; // 本地缓存，存储红包key对应的抢红包结果
+    private ConcurrentLruLocalCache<Map<String, Object>> cache; // 本地缓存，存储红包key对应的抢红包结果
     private ConcurrentHashMap<String, AtomicInteger> atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
     private final AtomicInteger atomicCount = new AtomicInteger(); // 原子整数当前数量
     private final AtomicBoolean isAtomicMapFull = new AtomicBoolean(false); // 原子整数是否已满
@@ -127,17 +127,8 @@ public class RedPacketService {
         // 执行发起抢红包前的扩展方法
         extensionComposite.beforePublish(userId, amount, shareNum, expireTime);
 
-        int tmp = amount;
-        // 用于将大红包随机拆分成若干小红包，相比Random类，能够减少竞争
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        // 二倍均值算法
-        String[] arr = new String[shareNum];
-        int decr;
-        for (int i = shareNum; i > 1; i--) {
-            amount -= (decr = random.nextInt(1, (amount / i) << 1));
-            arr[i - 1] = String.valueOf(decr);
-        }
-        arr[0] = String.valueOf(amount);
+        // 将大红包预先分割成若干小红包
+        String[] arr = splitRedPacket(amount, shareNum);
 
         // 使用线程池异步处理多个网络通信操作
         // 开启事务，当消息和Redis的key均创建成功后，提交账户操作
@@ -146,9 +137,9 @@ public class RedPacketService {
             protected void doInTransactionWithoutResult(TransactionStatus status) {
                 // 为了避免恶意攻击产生大量垃圾消息和key，先同步扣减账户余额
                 try {
-                    if (accountInterface.decreaseBalance(userId, tmp) != 1) throw new IllegalAccountException(userId);
+                    if (accountInterface.decreaseBalance(userId, amount) != 1) throw new IllegalAccountException(userId);
                 } catch (DataIntegrityViolationException e) {
-                    throw new BalanceNotEnoughException(userId, tmp);
+                    throw new BalanceNotEnoughException(userId, amount);
                 }
                 // 发送延时消息，用于结算
                 FutureTask<Integer> messageFuture = new FutureTask<>(
@@ -205,11 +196,12 @@ public class RedPacketService {
      * @param key 红包key
      * @param userId 抢红包用户ID
      */
-    public RedPacketResult<ShareResult> share(String key, String userId) {
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult share(String key, String userId) {
         // 执行参与抢红包前的扩展方法
         extensionComposite.beforeShare(key, userId);
 
-        Map<String, String> mapResult = null;
+        Map<String, Object> mapResult = null;
         ShareResult shareResult = null;
         // 设置最大重试次数，防止缓存穿透导致的死循环
         int tryTimes = 0;
@@ -228,7 +220,7 @@ public class RedPacketService {
                             // 如果返回结果为空，表明请求超时，正常释放锁，进入下一轮循环重试
                             // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
                             if (shareResult != null && shareResult.getStatus() == 0) {
-                                mapResult = shareResult.getResult();
+                                mapResult = shareResult.getMapResult();
                                 // 移除预生成结果占位项
                                 mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
                                 // 执行抢红包结果写入缓存前的扩展方法
@@ -244,7 +236,7 @@ public class RedPacketService {
                     // 如果返回结果为空，表明请求超时，进入下一轮循环重试
                     // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
                     if (shareResult != null && shareResult.getStatus() == 0) {
-                        mapResult = shareResult.getResult();
+                        mapResult = shareResult.getMapResult();
                         // 移除预生成结果占位项
                         mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
                         // 执行抢红包结果写入缓存前的扩展方法
@@ -257,47 +249,96 @@ public class RedPacketService {
         }
 
         // 对结果进行判断和进一步处理
-        RedPacketResult<ShareResult> redPacketResult;
+        RedPacketResult redPacketResult = doRedPacketResult(mapResult, shareResult, userId, key);
+
+        // 执行参与抢红包后的扩展方法
+        return extensionComposite.afterShare(key, userId, redPacketResult);
+    }
+
+    /**
+     * 将红包总金额分割成若干小金额
+     * @param amount 红包总金额
+     * @param shareNum 拆分小红包份数
+     * @return 小红包金额数组
+     */
+    private String[] splitRedPacket(int amount, int shareNum) {
+        // 用于将大红包随机拆分成若干小红包，相比Random类，能够减少竞争
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        // 二倍均值算法
+        String[] arr = new String[shareNum];
+        int decr;
+        for (int i = shareNum; i > 1; i--) {
+            amount -= (decr = random.nextInt(1, (amount / i) << 1));
+            arr[i - 1] = String.valueOf(decr);
+        }
+        arr[0] = String.valueOf(amount);
+
+        return arr;
+    }
+
+    /**
+     * 处理参与抢红包结果
+     * @param mapResult 红包结果
+     * @param shareResult 抢红包结果
+     * @param userId 用户ID
+     * @param key 红包key
+     * @return 参与抢红包结果
+     */
+    @SuppressWarnings("rawtypes")
+    private RedPacketResult doRedPacketResult(Map<String, Object> mapResult, ShareResult shareResult, String userId, String key) {
+        RedPacketResult redPacketResult;
         if (mapResult == null && shareResult == null) {
-            redPacketResult = RedPacketResult.error("没有找到红包，可能是网络异常或已经结束");
+            redPacketResult = RedPacketResult.error(RedPacketResult.ErrorType.SHARE_ERROR);
         } else {
             if (shareResult != null) {
                 // 如果从Redis查询到结果
-                if (shareResult.getStatus() == 0) {
-                    // 如果标识为0，表示抢不到红包或红包结束后的结果查询，进一步判断用户是否抢到过红包，如果用户抢到过则将标识设置为1
-                    // 如果红包结果为空集，表示红包结果key已经过期，直接返回空
-                    if (shareResult.getResult().size() == 0) {
-                        shareResult.setMsg("您查看的红包在较早的时候已经结束");
-                        log.info("用户{}查询一个过早的红包结果", userId);
-                    } else if (shareResult.getResult().get(userId) != null) {
-                        shareResult.setStatus(1);
-                        shareResult.setMsg("抢红包已经结束了，您抢到过红包");
-                        log.info("用户{}抢到红包，查询结果", userId);
+                int status = shareResult.getStatus();
+                mapResult = shareResult.getMapResult();
+                String entry;
+                if (status == 0) {
+                    // 如果标识为0，表示抢不到红包或红包结束后的结果查询，进一步判断用户是否抢到过红包
+                    if (mapResult.size() == 0) {
+                        // 如果红包结果为空集，表示红包结果key已经过期
+                        shareResult = ShareResult.share(ShareResult.ShareType.FAIL_NOT_FOUND, null, -1, -1L);
+                        log.info("用户 {} 查询一个过早的红包结果 {} ", userId, key);
+                    } else if ((entry = (String) mapResult.get(userId)) != null) {
+                        // 如果用户抢到过红包，解析金额和耗时
+                        int idx = entry.indexOf('-');
+                        shareResult = ShareResult.share(
+                                ShareResult.ShareType.SUCCESS_END, mapResult,
+                                Integer.parseInt(entry.substring(0, idx)),
+                                RedPacketKeyUtil.decodeTimeCost(entry.substring(idx + 1))
+                        );
+                        log.info("用户 {} 抢到红包 {} ，查询结果", userId, key);
                     } else {
-                        shareResult.setMsg("抢红包已经结束了，您没抢到红包");
-                        log.info("用户{}没抢到红包，查询结果", userId);
+                        log.info("用户 {} 没抢到红包 {} ，查询结果", userId, key);
                     }
-                } else if (shareResult.getStatus() == 1) {
-                    // 如果标识为1，表示抢到红包，此时抢红包仍未结束，直接返回，由前端将结果缓存到用户设备上
-                    log.info("用户{}抢到红包，耗时{}秒", userId, shareResult.getTimeCost() / 1000f);
+                } else if (status == 1) {
+                    // 如果标识为1，表示抢到红包，此时抢红包仍未结束，直接返回
+                    log.info("用户 {} 抢到红包 {} ，金额 {} 元，耗时 {} 秒", userId, key, shareResult.getShare(), shareResult.getTimeCost() / 1000f);
                 } else {
-                    // 如果标识为-1，表示已经参与过抢红包，由前端返回缓存在用户设备上的抢红包成功结果
-                    log.info("用户{}重复参与抢红包", userId);
+                    // 如果标识为-1，表示已经参与过抢红包
+                    log.info("用户 {} 重复参与抢红包 {} ", userId, key);
                 }
             } else {
-                // 如果从本地缓存查询到结果，进一步判断用户是否抢到过红包，如果用户抢到过则将标识设置为1
-                if (mapResult.get(userId) != null) {
-                    shareResult = ShareResult.shareSuccess("抢红包已经结束了，您抢到过红包", mapResult, 0L);
-                    log.info("用户{}抢到红包，查询结果", userId);
+                // 如果从本地缓存查询到结果，进一步判断用户是否抢到过红包
+                String entry = (String) mapResult.get(userId);
+                if (entry != null) {
+                    // 如果用户抢到过红包，解析金额和耗时
+                    int idx = entry.indexOf('-');
+                    shareResult = ShareResult.share(
+                            ShareResult.ShareType.SUCCESS_END, mapResult,
+                            Integer.parseInt(entry.substring(0, idx)),
+                            RedPacketKeyUtil.decodeTimeCost(entry.substring(idx + 1))
+                    );
+                    log.info("用户 {} 抢到红包 {} ，查询结果", userId, key);
                 } else {
-                    shareResult = ShareResult.shareFail("抢红包已经结束了，您没抢到红包", mapResult);
-                    log.info("用户{}没抢到红包，查询结果", userId);
+                    shareResult = ShareResult.share(ShareResult.ShareType.FAIL_END, mapResult, -1, -1L);
+                    log.info("用户 {} 没抢到红包 {} ，查询结果", userId, key);
                 }
             }
             redPacketResult = RedPacketResult.shareSuccess(shareResult);
         }
-
-        // 执行参与抢红包后的扩展方法
-        return extensionComposite.afterShare(key, userId, redPacketResult);
+        return redPacketResult;
     }
 }

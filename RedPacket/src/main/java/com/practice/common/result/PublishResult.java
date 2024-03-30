@@ -1,15 +1,11 @@
 package com.practice.common.result;
 
 import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
 
 /**
  * 发起抢红包统一响应结果类
  */
 @Getter
-@Setter
-@ToString
 public class PublishResult {
     private final String dateTime; // 发起抢红包的日期时间
     private final int amount; // 发起抢红包的总金额

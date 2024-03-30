@@ -11,8 +11,8 @@ import lombok.ToString;
 @Setter
 @ToString
 public class RedPacketInfo {
-    private String userId;
-    private int amount;
-    private int shareNum;
-    private int expireTime;
+    private String userId; // 发起用户ID
+    private int amount; // 红包总金额
+    private int shareNum; // 红包份数
+    private int expireTime; // 红包有效期
 }

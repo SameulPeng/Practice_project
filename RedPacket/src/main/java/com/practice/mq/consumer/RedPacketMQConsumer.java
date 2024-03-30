@@ -79,7 +79,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     }
 
     /**
-     * 抢红包结算
+     * 抢红包结算<br></br>
      * RocketMQ底层默认实现了多线程消费，默认线程数为20
      * @param key 红包key
      */
@@ -91,12 +91,14 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
 
         // 使用分布式锁Redisson，保证幂等性处理的并发安全
         /*
-            由于幂等性通过红包结果key的过期时间来保证，但获取和修改过期时间的两步操作本身不具有原子性，因此需要通过分布式锁实现原子性
+            由于幂等性通过红包结果key的过期时间来保证，但获取和设置过期时间的两步操作本身不具有原子性，因此需要通过分布式锁实现原子性
             虽然通过消息TAG的机制，尽量保证了同一个JVM实例发送的消息由自身进行消费，但是此处使用分布式锁而非JVM锁是出于以下考虑
                 JVM编号仅用于构造全局唯一的红包key，本身既无业务含义，也是自主设置而非通过注册中心进行唯一分配的
                 因此，此项目模块的JVM可以不依赖注册中心运行，因此也对其他JVM无感知，从机制上允许了两个不同JVM实例拥有编号
                 虽然JVM编号应当唯一，但是如果由于配置出错导致JVM编号重复，在运行时可能出现两个不同JVM实例上的消费者订阅相同消息TAG的情况，而这种逻辑上的错误不会影响运行
                 上述情况发生时，重复消息的幂等性就无法由JVM锁保证，因此使用分布式锁，对于涉及金额的幂等性处理，采用偏保守的策略
+            此外，在最后设置红包结果key的过期时间时，再次检查过期时间，并使用Lua脚本实现了这两步操作的原子性，使结算过程实现了类似CAS的操作，保证幂等性
+            如果不使用分布式锁，也能保证幂等性，但是由于设置红包结果key在数据库访问之后执行，不使用分布式锁会导致重复消息增加数据库的访问压力，因此还是使用分布式锁
         */
         RLock lock = redisson.getLock(key);
         // 由于设置了消费超时时间为5分钟，超过5分钟则认为消费失败且事务不会被提交，因此锁的持有时间设置为5分钟
@@ -128,7 +130,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
                         }
                     }
                 });
-                log.info("红包{}结算完成", key);
+                log.info("红包 {} 结算完成", key);
 
                 // 执行红包结算后具有幂等性的扩展方法
                 extensionComposite.afterSettlementIdempotent(key);
@@ -153,15 +155,17 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         mapResult.remove(publisherId);
         // 遍历红包结果
         for (Map.Entry<String, String> entry :mapResult.entrySet()) {
-            int share = Integer.parseInt(entry.getValue());
-            amount -= share;
+            // 从每项结果提取金额
+            String value = entry.getValue();
+            int share = Integer.parseInt(value.substring(0, value.indexOf('-')));
             // 为每个抢到红包的用户增加账户余额
             result.put(entry.getKey(), share);
+            amount -= share;
         }
         // 没有被抢完的红包金额以及本人抢到的红包金额，退回到发起者的账户
         if (amount > 0) result.put(publisherId, amount);
 
-        log.info("结算结果：{}", result);
+        log.info("结算结果： {} ", result);
         return result;
     }
 }

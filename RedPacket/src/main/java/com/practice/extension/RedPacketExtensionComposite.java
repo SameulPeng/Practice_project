@@ -1,7 +1,6 @@
 package com.practice.extension;
 
 import com.practice.common.result.RedPacketResult;
-import com.practice.common.result.ShareResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -68,7 +67,7 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
      * @return 处理后的抢红包结果
      */
     @Override
-    public Map<String, String> onCache(Map<String, String> mapResult) {
+    public Map<String, Object> onCache(Map<String, Object> mapResult) {
         if (extensions != null) {
             for (RedPacketExtension extension : extensions) {
                 mapResult = extension.onCache(mapResult);
@@ -81,20 +80,21 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
      * 参与抢红包后
      * @param key 红包key
      * @param userId 抢红包用户ID
-     * @param result 抢红包结果
+     * @param redPacketResult 抢红包结果
      */
     @Override
-    public RedPacketResult<ShareResult> afterShare(String key, String userId, RedPacketResult<ShareResult> result) {
+    @SuppressWarnings("rawtypes")
+    public RedPacketResult afterShare(String key, String userId, RedPacketResult redPacketResult) {
         if (extensions != null) {
             for (RedPacketExtension extension : extensions) {
-                result = extension.afterShare(key, userId, result);
+                redPacketResult = extension.afterShare(key, userId, redPacketResult);
             }
         }
-        return result;
+        return redPacketResult;
     }
 
     /**
-     * 红包结算后，具有幂等性
+     * 红包结算后，具有幂等性<br></br>
      * 不包含在结算的事务中，因此不保证一致性
      * @param key 红包key
      */
@@ -121,7 +121,7 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     }
 
     /**
-     * 红包结束且未抢完时
+     * 红包结束且未抢完时<br></br>
      * 依赖Redis的key过期事件监听功能
      * @param key 红包key
      */
@@ -135,7 +135,7 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     }
 
     /**
-     * 红包结果移除时
+     * 红包结果移除时<br></br>
      * 依赖Redis的key过期事件监听功能
      * @param key 红包key
      */

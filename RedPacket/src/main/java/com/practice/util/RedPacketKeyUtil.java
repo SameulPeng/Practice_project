@@ -1,14 +1,14 @@
 package com.practice.util;
 
 /**
- * 红包Key字符串处理工具类
+ * 红包key字符串处理工具类
  */
 public class RedPacketKeyUtil {
     private final static int SERVICE_ID_CHARS = 2; // JVM编号使用两个字节，不重复范围为0到4095
     private final static int THREAD_ID_CHARS = 2; // 线程ID使用两个字节，不重复范围为0到4095
     private final static int AMOUNT_CHARS = 5; // 红包总金额使用5个字节，上限为1073741823，约一千万元
     private final static int EXPIRE_TIME_CHARS = 4; // 有效期使用4个字节，上限为16777215，约194天
-    private final static int TIMESTAMP_CHARS = 7; // 时间戳使用7个字节，上限为4398046511104，约139年（从1970年1月1日0时0分0秒起）
+    private final static int TIMESTAMP_CHARS = 7; // 时间戳使用7个字节，上限为4398046511103，约139年（从1970年1月1日0时0分0秒起）
 
     /**
      * 生成红包key
@@ -77,7 +77,25 @@ public class RedPacketKeyUtil {
     }
 
     /**
-     * 将待映射整型数的低位转换为目标数量的字符串
+     * 对进行抢红包耗时进行编码
+     * @param timeCost 抢红包耗时
+     * @return 抢红包耗时的编码结果
+     */
+    public static String encodeTimeCost(long timeCost) {
+        return i2chars(timeCost, EXPIRE_TIME_CHARS);
+    }
+
+    /**
+     * 对进行抢红包耗时进行解码
+     * @param encodedTimeCost 编码后的抢红包耗时
+     * @return 抢红包耗时
+     */
+    public static long decodeTimeCost(String encodedTimeCost) {
+        return chars2i(encodedTimeCost);
+    }
+
+    /**
+     * 将待映射整型数的低位转换为目标数量的字符串<br></br>
      * 每6位（0到63）按顺序映射到 0-9、A-Z、a-z、*、+
      * @param charNums 目标字符数
      * @param i 待映射整型数
@@ -107,7 +125,7 @@ public class RedPacketKeyUtil {
     }
 
     /**
-     * 将待解析字符串转换为目标整型数
+     * 将待解析字符串转换为目标整型数<br></br>
      * 0-9、A-Z、a-z、*、+ 按顺序反映射为6位（0到63）
      * @param str 待解析字符串
      * @return 目标整型数

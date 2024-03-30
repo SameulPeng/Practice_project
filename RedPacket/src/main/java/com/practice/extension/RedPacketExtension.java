@@ -1,7 +1,6 @@
 package com.practice.extension;
 
 import com.practice.common.result.RedPacketResult;
-import com.practice.common.result.ShareResult;
 
 import java.util.Map;
 
@@ -39,7 +38,7 @@ public interface RedPacketExtension {
      * @param mapResult 抢红包结果
      * @return 处理后的抢红包结果
      */
-    default Map<String, String> onCache(Map<String, String> mapResult) {
+    default Map<String, Object> onCache(Map<String, Object> mapResult) {
         return mapResult;
     }
 
@@ -47,15 +46,16 @@ public interface RedPacketExtension {
      * 参与抢红包后
      * @param key 红包key
      * @param userId 抢红包用户ID
-     * @param result 抢红包结果
+     * @param redPacketResult 抢红包结果
      * @return 处理后的抢红包结果
      */
-    default RedPacketResult<ShareResult> afterShare(String key, String userId, RedPacketResult<ShareResult> result) {
-        return result;
+    @SuppressWarnings("rawtypes")
+    default RedPacketResult afterShare(String key, String userId, RedPacketResult redPacketResult) {
+        return redPacketResult;
     }
 
     /**
-     * 红包结算后，具有幂等性
+     * 红包结算后，具有幂等性<br></br>
      * 不包含在结算的事务中，因此不保证一致性
      * @param key 红包key
      */
@@ -68,14 +68,14 @@ public interface RedPacketExtension {
     default void afterSettlement(String key) {}
 
     /**
-     * 红包结束且未抢完时
+     * 红包结束且未抢完时<br></br>
      * 依赖Redis的key过期事件监听功能
      * @param key 红包key
      */
     default void onExpire(String key) {}
 
     /**
-     * 红包结果移除时
+     * 红包结果移除时<br></br>
      * 依赖Redis的key过期事件监听功能
      * @param key 红包key
      */
