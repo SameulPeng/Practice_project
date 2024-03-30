@@ -20,6 +20,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         // 超过红包的访问时限的访问请求将被拒绝
-        registry.addInterceptor(shareInterceptor);
+        registry.addInterceptor(shareInterceptor).addPathPatterns("/redpacket/share");
     }
 }

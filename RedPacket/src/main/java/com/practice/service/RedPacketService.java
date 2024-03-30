@@ -9,6 +9,7 @@ import com.practice.config.RedPacketProperties;
 import com.practice.dao.RedPacketDao;
 import com.practice.extension.RedPacketExtensionComposite;
 import com.practice.mapper.AccountInterface;
+import com.practice.pojo.ShareInfo;
 import com.practice.util.RedPacketKeyUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendStatus;
@@ -22,11 +23,12 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.annotation.Nullable;
 import javax.annotation.PostConstruct;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
@@ -48,8 +50,6 @@ public class RedPacketService {
     private ConcurrentLruLocalCache<Map<String, Object>> cache; // 本地缓存，存储红包key对应的抢红包结果
     private ConcurrentHashMap<String, AtomicInteger> atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
     private final AtomicInteger atomicCount = new AtomicInteger(); // 原子整数当前数量
-    private final AtomicBoolean isAtomicMapFull = new AtomicBoolean(false); // 原子整数是否已满
-    private final ConcurrentLinkedQueue<AtomicInteger> atomicPool = new ConcurrentLinkedQueue<>(); // 原子整数池，实现原子整数的复用
     private final ScheduledExecutorService scheduledPool = // 检查原子整数Map泄漏问题的巡逻线程的线程池
             Executors.newScheduledThreadPool(1, r -> new Thread(r, "KeyLeakPatroller"));
     private ExecutorService transactionPool; // 异步处理发起抢红包的多个网络通信操作的线程池
@@ -104,7 +104,7 @@ public class RedPacketService {
      */
     public void removeFromAtomicMap(String key) {
         AtomicInteger i = atomicMap.remove(key);
-        if (i != null) atomicPool.offer(i);
+        if (i != null) atomicCount.decrementAndGet();
     }
 
     /**
@@ -172,19 +172,13 @@ public class RedPacketService {
             }
         });
 
-        // 获取红包key对应的原子整数，初始值为红包份数
-        AtomicInteger i = atomicPool.poll();
-        if (i != null) {
-            // 如果从原子整数池中获取到原子整数，则直接复用
-            i.set(shareNum);
-            atomicMap.put(key, i);
-        } else if (!isAtomicMapFull.get()) {
-            // 如果没有从原子整数池中获取到原子整数，但是原子整数数量未达到上限，则尝试创建新的原子整数
-            if (atomicCount.getAndIncrement() < redPacketProperties.getPublish().getAtomicMaxCount()) {
-                atomicMap.put(key, new AtomicInteger(shareNum));
-            } else {
-                isAtomicMapFull.set(true);
-            }
+        // 如果没有从原子整数池中获取到原子整数，但是原子整数数量未达到上限，则尝试创建新的原子整数
+        // 没有使用getAndUpdate()方法，是因为竞争通常较为激烈，可能会导致多次执行原子整数Map的put操作，虽然具有幂等性，但是较为浪费资源
+        if (atomicCount.getAndIncrement() < redPacketProperties.getPublish().getAtomicMaxCount()) {
+            // 创建红包key对应的原子整数，初始值为红包份数
+            atomicMap.put(key, new AtomicInteger(shareNum));
+        } else {
+            atomicCount.getAndDecrement();
         }
 
         // 执行发起抢红包后的扩展方法
@@ -218,13 +212,9 @@ public class RedPacketService {
                         if ((mapResult = cache.get(key)) == null) {
                             shareResult = redPacketDao.share(key, userId);
                             // 如果返回结果为空，表明请求超时，正常释放锁，进入下一轮循环重试
-                            // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
                             if (shareResult != null && shareResult.getStatus() == 0) {
-                                mapResult = shareResult.getMapResult();
-                                // 移除预生成结果占位项
-                                mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
-                                // 执行抢红包结果写入缓存前的扩展方法
-                                cache.put(key, extensionComposite.onCache(mapResult));
+                                // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
+                                mapResult = doCache(key, shareResult);
                             }
                         }
                     }
@@ -234,13 +224,9 @@ public class RedPacketService {
                     // 原子整数扣减到负数之前，都可以不必竞争锁，直接访问Redis
                     shareResult = redPacketDao.share(key, userId);
                     // 如果返回结果为空，表明请求超时，进入下一轮循环重试
-                    // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
                     if (shareResult != null && shareResult.getStatus() == 0) {
-                        mapResult = shareResult.getMapResult();
-                        // 移除预生成结果占位项
-                        mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
-                        // 执行抢红包结果写入缓存前的扩展方法
-                        cache.put(key, extensionComposite.onCache(mapResult));
+                        // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
+                        mapResult = doCache(key, shareResult);
                         // 如果原子整数还没扣减到负数，但是已经产生了红包结果，说明红包没有被抢完就过期，或通过竞争锁访问Redis的用户先抢完了红包，需要移除红包key对应的原子整数
                         removeFromAtomicMap(key);
                     }
@@ -277,6 +263,51 @@ public class RedPacketService {
     }
 
     /**
+     * 写入缓存前将红包结果中的原始信息进行解析
+     * @param mapResult 从Redis获取的红包结果原始信息
+     */
+    private void parseMapResult(Map<String, Object> mapResult) {
+        // 将红包结果中的每个用户抢到的红包金额和耗时进行解析封装
+        for (Map.Entry<String, Object> entry : mapResult.entrySet()) {
+            String shareAndTimeCost = (String) entry.getValue();
+            mapResult.put(entry.getKey(), parseMapEntry(shareAndTimeCost));
+        }
+    }
+
+    /**
+     * 对红包结果中的原始信息项进行解析并封装
+     * @param value 原始信息项
+     * @return 信息封装类，包含每个用户抢到的红包金额和耗时
+     */
+    private ShareInfo parseMapEntry(String value) {
+        int idx = value.indexOf('-');
+        return new ShareInfo(Integer.parseInt(value.substring(0, idx)),
+                RedPacketKeyUtil.decodeTimeCost(value.substring(idx + 1)));
+    }
+
+    /**
+     * 从抢红包结果中获取红包结果，进行前置处理后写入缓存
+     * @param key 红包key
+     * @param shareResult 抢红包结果
+     */
+    @Nullable
+    private Map<String, Object> doCache(String key, ShareResult shareResult) {
+        Map<String, Object> mapResult = shareResult.getMapResult();
+        // 如果红包结果为空集，表示红包结果key已经过期，直接返回空
+        if (mapResult.size() == 0) {
+            return null;
+        }
+        // 移除预生成结果占位项
+        mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
+        // 解析红包结果原始信息
+        parseMapResult(mapResult);
+        // 执行抢红包结果写入缓存前的扩展方法
+        cache.put(key, extensionComposite.onCache(mapResult));
+        return mapResult;
+    }
+
+
+    /**
      * 处理参与抢红包结果
      * @param mapResult 红包结果
      * @param shareResult 抢红包结果
@@ -287,51 +318,39 @@ public class RedPacketService {
     @SuppressWarnings("rawtypes")
     private RedPacketResult doRedPacketResult(Map<String, Object> mapResult, ShareResult shareResult, String userId, String key) {
         RedPacketResult redPacketResult;
+        boolean checkShareSuccess = false;
         if (mapResult == null && shareResult == null) {
             redPacketResult = RedPacketResult.error(RedPacketResult.ErrorType.SHARE_ERROR);
         } else {
             if (shareResult != null) {
                 // 如果从Redis查询到结果
                 int status = shareResult.getStatus();
-                mapResult = shareResult.getMapResult();
-                String entry;
                 if (status == 0) {
                     // 如果标识为0，表示抢不到红包或红包结束后的结果查询，进一步判断用户是否抢到过红包
-                    if (mapResult.size() == 0) {
-                        // 如果红包结果为空集，表示红包结果key已经过期
+                    if (mapResult == null) {
+                        // 如果红包结果为空，表示红包结果key已经过期
                         shareResult = ShareResult.share(ShareResult.ShareType.FAIL_NOT_FOUND, null, -1, -1L);
                         log.info("用户 {} 查询一个过早的红包结果 {} ", userId, key);
-                    } else if ((entry = (String) mapResult.get(userId)) != null) {
-                        // 如果用户抢到过红包，解析金额和耗时
-                        int idx = entry.indexOf('-');
-                        shareResult = ShareResult.share(
-                                ShareResult.ShareType.SUCCESS_END, mapResult,
-                                Integer.parseInt(entry.substring(0, idx)),
-                                RedPacketKeyUtil.decodeTimeCost(entry.substring(idx + 1))
-                        );
-                        log.info("用户 {} 抢到红包 {} ，查询结果", userId, key);
                     } else {
-                        log.info("用户 {} 没抢到红包 {} ，查询结果", userId, key);
+                        checkShareSuccess = true;
                     }
                 } else if (status == 1) {
                     // 如果标识为1，表示抢到红包，此时抢红包仍未结束，直接返回
-                    log.info("用户 {} 抢到红包 {} ，金额 {} 元，耗时 {} 秒", userId, key, shareResult.getShare(), shareResult.getTimeCost() / 1000f);
+                    log.info("用户 {} 抢到了红包 {} ，金额 {} 元，耗时 {} 秒", userId, key, shareResult.getShare(), shareResult.getTimeCost() / 1000f);
                 } else {
                     // 如果标识为-1，表示已经参与过抢红包
                     log.info("用户 {} 重复参与抢红包 {} ", userId, key);
                 }
             } else {
                 // 如果从本地缓存查询到结果，进一步判断用户是否抢到过红包
-                String entry = (String) mapResult.get(userId);
-                if (entry != null) {
-                    // 如果用户抢到过红包，解析金额和耗时
-                    int idx = entry.indexOf('-');
-                    shareResult = ShareResult.share(
-                            ShareResult.ShareType.SUCCESS_END, mapResult,
-                            Integer.parseInt(entry.substring(0, idx)),
-                            RedPacketKeyUtil.decodeTimeCost(entry.substring(idx + 1))
-                    );
-                    log.info("用户 {} 抢到红包 {} ，查询结果", userId, key);
+                checkShareSuccess = true;
+            }
+            if (checkShareSuccess) {
+                ShareInfo info = (ShareInfo) mapResult.get(userId);
+                if (info != null) {
+                    shareResult = ShareResult.share(ShareResult.ShareType.SUCCESS_END, mapResult,
+                            info.getShare(), info.getTimeCost());
+                    log.info("用户 {} 抢到过红包 {} ，查询结果", userId, key);
                 } else {
                     shareResult = ShareResult.share(ShareResult.ShareType.FAIL_END, mapResult, -1, -1L);
                     log.info("用户 {} 没抢到红包 {} ，查询结果", userId, key);
