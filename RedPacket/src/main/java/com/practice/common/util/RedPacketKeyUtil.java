@@ -1,4 +1,4 @@
-package com.practice.util;
+package com.practice.common.util;
 
 /**
  * 红包key字符串处理工具类
@@ -27,7 +27,7 @@ public class RedPacketKeyUtil {
         String s4 = i2chars(expireTime, EXPIRE_TIME_CHARS);
         String s5 = i2chars(timestamp, TIMESTAMP_CHARS);
 
-        // 格式为： JVM编号 + 线程ID + 红包总金额 + 红包有效期 + 发起毫秒时间戳 + 发起用户ID
+        // 格式为： JVM编号 + 线程ID + 红包总金额 + 红包有效期 + 红包发起毫秒时间戳 + 发起用户ID
         return s1 + s2 + s3 + s4 + s5 + userId;
     }
 
@@ -95,7 +95,7 @@ public class RedPacketKeyUtil {
     }
 
     /**
-     * 将待映射整型数的低位转换为目标数量的字符串<br></br>
+     * 将待映射整型数的低位转换为目标数量的字符串<br/>
      * 每6位（0到63）按顺序映射到 0-9、A-Z、a-z、*、+
      * @param charNums 目标字符数
      * @param i 待映射整型数
@@ -125,7 +125,7 @@ public class RedPacketKeyUtil {
     }
 
     /**
-     * 将待解析字符串转换为目标整型数<br></br>
+     * 将待解析字符串转换为目标整型数<br/>
      * 0-9、A-Z、a-z、*、+ 按顺序反映射为6位（0到63）
      * @param str 待解析字符串
      * @return 目标整型数
@@ -149,7 +149,7 @@ public class RedPacketKeyUtil {
                 c -= 61;
             }
             // 填充整型数l二进制表示的第(k + 1)个低6位
-            l ^= ((long) c << ((k << 1) + (k << 2)));
+            l ^= ((long) (c & 0x3F) << ((k << 1) + (k << 2)));
         }
         return l;
     }

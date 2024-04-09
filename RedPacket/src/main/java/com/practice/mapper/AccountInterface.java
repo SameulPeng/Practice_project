@@ -35,7 +35,6 @@ public class AccountInterface {
             case NON_PREPARED -> accountMapper.batchIncreaseBalance(resultMap);
             // 使用MyBatis封装的JDBC批处理方式，批量发送SQL语句，会进行预编译
             case PREPARED -> preparedBatchIncreaseBalance(resultMap);
-            default -> throw new IllegalArgumentException("无法识别的SQL批量发送方式");
         }
     }
 

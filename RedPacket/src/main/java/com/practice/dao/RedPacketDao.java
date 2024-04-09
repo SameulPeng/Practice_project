@@ -1,9 +1,8 @@
 package com.practice.dao;
 
 import com.practice.common.result.ShareResult;
+import com.practice.common.util.RedPacketKeyUtil;
 import com.practice.config.RedPacketProperties;
-import com.practice.util.RedPacketKeyUtil;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -15,11 +14,9 @@ import org.springframework.util.ClassUtils;
 import javax.annotation.PostConstruct;
 import java.io.BufferedReader;
 import java.io.FileReader;
-import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.*;
 
-@Slf4j
 @Repository
 @Profile("biz")
 public class RedPacketDao {
@@ -52,7 +49,7 @@ public class RedPacketDao {
                 sb.append(chars, 0, len);
             }
             shareScript = sb.toString();
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -84,8 +81,6 @@ public class RedPacketDao {
 
         redisTemplate.execute(new DefaultRedisScript<>(sb.toString(), String.class),
                 Arrays.asList(redPacketKey, resultKey), String.valueOf(expireTime));
-
-        log.info("红包key创建成功，有效期 {} 秒： {} ", expireTime, key);
     }
 
     /**
@@ -138,7 +133,7 @@ public class RedPacketDao {
                             ShareResult.ShareType.FAIL_END,
                             // 查询红包结果
                             redisTemplate.opsForHash().entries(resultKey),
-                            -1, -1L
+                            0, 0L
                     )
                     // 如果结果为正整数，表示抢到红包
                     : ShareResult.share(ShareResult.ShareType.SUCCESS_ONGOING, null, share, timeCost);

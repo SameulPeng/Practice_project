@@ -1,6 +1,7 @@
 package com.practice.extension;
 
 import com.practice.common.result.RedPacketResult;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +11,7 @@ import java.util.Map;
 /**
  * 抢红包业务扩展组合类
  */
+@Slf4j
 @Component
 public class RedPacketExtensionComposite implements RedPacketExtension {
     @Autowired(required = false)
@@ -39,10 +41,14 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
      * @param expireTime 红包过期时长，单位为秒
      */
     @Override
-    public void afterPublish(String userId, int amount, int shareNum, int expireTime) {
+    public void afterPublish(String key, String userId, int amount, int shareNum, int expireTime) {
         if (extensions != null) {
             for (RedPacketExtension extension : extensions) {
-                extension.afterPublish(userId, amount, shareNum, expireTime);
+                try {
+                    extension.afterPublish(key, userId, amount, shareNum, expireTime);
+                } catch (Exception e) {
+                    log.error("{} 的 afterPublish 方法执行异常，key = {}，userId = {}", extension.getClass().getName(), key, userId);
+                }
             }
         }
     }
@@ -70,10 +76,14 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     public Map<String, Object> onCache(Map<String, Object> mapResult) {
         if (extensions != null) {
             for (RedPacketExtension extension : extensions) {
-                mapResult = extension.onCache(mapResult);
+                try {
+                    mapResult = extension.onCache(mapResult);
+                } catch (Exception e) {
+                    log.error("{} 的 onCache 方法执行异常", extension.getClass().getName());
+                }
             }
         }
-         return mapResult;
+        return mapResult;
     }
 
     /**
@@ -87,14 +97,18 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     public RedPacketResult afterShare(String key, String userId, RedPacketResult redPacketResult) {
         if (extensions != null) {
             for (RedPacketExtension extension : extensions) {
-                redPacketResult = extension.afterShare(key, userId, redPacketResult);
+                try {
+                    redPacketResult = extension.afterShare(key, userId, redPacketResult);
+                } catch (Exception e) {
+                    log.error("{} 的 afterShare 方法执行异常，key = {}，userId = {}", extension.getClass().getName(), key, userId);
+                }
             }
         }
         return redPacketResult;
     }
 
     /**
-     * 红包结算后，具有幂等性<br></br>
+     * 红包结算后，具有幂等性<br/>
      * 不包含在结算的事务中，因此不保证一致性
      * @param key 红包key
      */
@@ -121,7 +135,7 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     }
 
     /**
-     * 红包结束且未抢完时<br></br>
+     * 红包结束且未抢完时<br/>
      * 依赖Redis的key过期事件监听功能
      * @param key 红包key
      */
@@ -135,7 +149,7 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     }
 
     /**
-     * 红包结果移除时<br></br>
+     * 红包结果移除时<br/>
      * 依赖Redis的key过期事件监听功能
      * @param key 红包key
      */

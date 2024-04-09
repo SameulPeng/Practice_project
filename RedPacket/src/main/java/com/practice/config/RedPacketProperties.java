@@ -28,42 +28,48 @@ public class RedPacketProperties {
      */
     @PostConstruct
     private void init() throws IllegalPropertyException {
-        if (biz.getKeyPrefix().length() > 64
+        if (biz.getKeyPrefix().length() > 0x40
                 || !isAllPrintableAscii(biz.getKeyPrefix())) {
             throw new IllegalPropertyException("红包Key前缀设置有误，请设置在64个字符以内，并且只包含ASCII编码可打印字符：red-packet.biz.key-prefix");
         }
 
-        if (biz.getResultPrefix().length() > 64
+        if (biz.getResultPrefix().length() > 0x40
                 || !isAllPrintableAscii(biz.getResultPrefix())) {
             throw new IllegalPropertyException("红包结果Key前缀设置有误，请设置在64个字符以内，并且只包含ASCII编码可打印字符：red-packet.biz.result-prefix");
         }
 
-        if (biz.getResultPlaceholder().length() > 64
+        if (biz.getResultPlaceholder().length() > 0x40
                 || !isAllPrintableAscii(biz.getResultPlaceholder())) {
             throw new IllegalPropertyException("红包结果Key占位项设置有误，请设置在64个字符以内，并且只包含ASCII编码可打印字符：red-packet.biz.result-placeholder");
         }
 
         if (biz.getMinAmount() > biz.getMaxAmount()
                 || biz.getMinAmount() < 1
-                || biz.getMaxAmount() > 0x3fffffff) {
+                || biz.getMaxAmount() > 0x3FFFFFFF) {
             throw new IllegalPropertyException("红包金额范围设置有误：red-packet.biz.max-expire-time 或 red-packet.biz.min-expire-time");
         }
 
         if (biz.getMinShareNum() > biz.getMaxShareNum()
                 || biz.getMinShareNum() < 1
-                || biz.getMaxShareNum() > 0x3ff) {
+                || biz.getMaxShareNum() > 0x3FF) {
             throw new IllegalPropertyException("红包份数范围设置有误：red-packet.biz.max-share-num 或 red-packet.biz.min-share-num");
         }
 
         if (biz.getMinExpireTime() > biz.getMaxExpireTime()
                 || biz.getMinExpireTime() < 1
-                || biz.getMaxExpireTime() > 0xffffff) {
+                || biz.getMaxExpireTime() > 0xFFFFFF) {
             throw new IllegalPropertyException("红包有效期范围设置有误：red-packet.biz.max-amount 或 red-packet.biz.min-amount");
         }
 
         if (biz.getResultKeepTime() < 1
                 || biz.getResultKeepTime() > 2592000) {
             throw new IllegalPropertyException("红包结果保留时长设置有误：red-packet.biz.result-keep-time");
+        }
+
+        if (settlementSqlBatch != SqlBatch.NON_BATCHED
+                && settlementSqlBatch != SqlBatch.NON_PREPARED
+                && settlementSqlBatch != SqlBatch.PREPARED) {
+            throw new IllegalArgumentException("无法识别的SQL批量发送方式：red-packet.settlement-sql-batch");
         }
     }
 

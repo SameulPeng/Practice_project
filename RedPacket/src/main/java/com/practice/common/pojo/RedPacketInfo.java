@@ -1,4 +1,4 @@
-package com.practice.pojo;
+package com.practice.common.pojo;
 
 import lombok.Getter;
 import lombok.Setter;

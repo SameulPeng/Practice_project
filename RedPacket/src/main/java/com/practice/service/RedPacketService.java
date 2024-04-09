@@ -3,15 +3,16 @@ package com.practice.service;
 import com.practice.cache.impl.ConcurrentLruLocalCache;
 import com.practice.common.exception.BalanceNotEnoughException;
 import com.practice.common.exception.IllegalAccountException;
+import com.practice.common.logging.ExtLogger;
+import com.practice.common.pojo.BigDataInfo;
+import com.practice.common.pojo.ShareInfo;
 import com.practice.common.result.RedPacketResult;
 import com.practice.common.result.ShareResult;
+import com.practice.common.util.RedPacketKeyUtil;
 import com.practice.config.RedPacketProperties;
 import com.practice.dao.RedPacketDao;
 import com.practice.extension.RedPacketExtensionComposite;
 import com.practice.mapper.AccountInterface;
-import com.practice.pojo.ShareInfo;
-import com.practice.util.RedPacketKeyUtil;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,15 +27,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 import javax.annotation.Nullable;
 import javax.annotation.PostConstruct;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Slf4j
 @Service
 @Profile("biz")
 public class RedPacketService {
+    private final ExtLogger log = ExtLogger.create(RedPacketService.class); // 日志Logger对象
     @Autowired
     private RedPacketDao redPacketDao;
     @Autowired
@@ -117,13 +117,15 @@ public class RedPacketService {
 
     /**
      * 发起抢红包，根据大红包总金额和分派数量，预先分成若干小红包
-     * @param key 红包key
-     * @param userId 发起抢红包用户ID
-     * @param amount 红包总金额，单位为分
-     * @param shareNum 拆分小红包份数
+     *
+     * @param key        红包key
+     * @param userId     发起抢红包用户ID
+     * @param amount     红包总金额，单位为分
+     * @param shareNum   拆分小红包份数
      * @param expireTime 红包过期时长，单位为秒
+     * @param timestamp 红包发起毫秒时间戳
      */
-    public void publish(String key, String userId, int amount, int shareNum, int expireTime) {
+    public void publish(String key, String userId, int amount, int shareNum, int expireTime, long timestamp) {
         // 执行发起抢红包前的扩展方法
         extensionComposite.beforePublish(userId, amount, shareNum, expireTime);
 
@@ -181,8 +183,17 @@ public class RedPacketService {
             atomicCount.getAndDecrement();
         }
 
+        log.biz("[{}] [ ] 红包创建成功，有效期 {} 秒", key, expireTime);
+        // 使用惰性日志
+        log.bigdata("{}", () -> BigDataInfo.of(
+                BigDataInfo.Status.PUBLISH, key, userId,
+                BigDataInfo.Publish.of(amount, shareNum, expireTime, timestamp),
+                null, null, null
+                ).encode()
+        );
+
         // 执行发起抢红包后的扩展方法
-        extensionComposite.afterPublish(userId, amount, shareNum, expireTime);
+        extensionComposite.afterPublish(key, userId, amount, shareNum, expireTime);
     }
 
     /**
@@ -317,6 +328,7 @@ public class RedPacketService {
      */
     @SuppressWarnings("rawtypes")
     private RedPacketResult doRedPacketResult(Map<String, Object> mapResult, ShareResult shareResult, String userId, String key) {
+        long timestamp = System.currentTimeMillis();
         RedPacketResult redPacketResult;
         boolean checkShareSuccess = false;
         if (mapResult == null && shareResult == null) {
@@ -329,17 +341,42 @@ public class RedPacketService {
                     // 如果标识为0，表示抢不到红包或红包结束后的结果查询，进一步判断用户是否抢到过红包
                     if (mapResult == null) {
                         // 如果红包结果为空，表示红包结果key已经过期
-                        shareResult = ShareResult.share(ShareResult.ShareType.FAIL_NOT_FOUND, null, -1, -1L);
-                        log.info("用户 {} 查询一个过早的红包结果 {} ", userId, key);
+                        shareResult = ShareResult.share(ShareResult.ShareType.FAIL_NOT_FOUND, null, 0, 0L);
+                        log.biz("[{}] [用户 {}] 查询一个过早的红包结果", key, userId);
+                        // 使用惰性日志
+                        log.bigdata("{}", () -> BigDataInfo.of(
+                                BigDataInfo.Status.SHARE, key, userId, null,
+                                BigDataInfo.Share.of(BigDataInfo.Share.ShareType.FAIL_NOT_FOUND, 0, 0L, timestamp),
+                                null, null
+                                ).encode()
+                        );
                     } else {
                         checkShareSuccess = true;
                     }
                 } else if (status == 1) {
                     // 如果标识为1，表示抢到红包，此时抢红包仍未结束，直接返回
-                    log.info("用户 {} 抢到了红包 {} ，金额 {} 元，耗时 {} 秒", userId, key, shareResult.getShare(), shareResult.getTimeCost() / 1000f);
+                    int share = shareResult.getShare();
+                    long timeCost = shareResult.getTimeCost();
+                    log.biz("[{}] [用户 {}] 抢到了红包，金额 {} 元，耗时 {} 秒", key, userId, share, timeCost / 1000f);
+                    // 使用惰性日志
+                    log.bigdata("{}", () -> BigDataInfo.of(
+                            BigDataInfo.Status.SHARE, key, userId, null,
+                            BigDataInfo.Share.of(BigDataInfo.Share.ShareType.SUCCESS_ONGOING, share, timeCost, timestamp),
+                            null, null
+                            ).encode()
+                    );
                 } else {
                     // 如果标识为-1，表示已经参与过抢红包
-                    log.info("用户 {} 重复参与抢红包 {} ", userId, key);
+                    int share = shareResult.getShare();
+                    long timeCost = shareResult.getTimeCost();
+                    log.biz("[{}] [用户 {}] 重复参与抢红包", key, userId);
+                    // 使用惰性日志
+                    log.bigdata("{}", () -> BigDataInfo.of(
+                            BigDataInfo.Status.SHARE, key, userId, null,
+                            BigDataInfo.Share.of(BigDataInfo.Share.ShareType.FAIL_REDO, share, timeCost, timestamp),
+                            null, null
+                            ).encode()
+                    );
                 }
             } else {
                 // 如果从本地缓存查询到结果，进一步判断用户是否抢到过红包
@@ -348,12 +385,28 @@ public class RedPacketService {
             if (checkShareSuccess) {
                 ShareInfo info = (ShareInfo) mapResult.get(userId);
                 if (info != null) {
+                    int share = info.getShare();
+                    long timeCost = info.getTimeCost();
                     shareResult = ShareResult.share(ShareResult.ShareType.SUCCESS_END, mapResult,
-                            info.getShare(), info.getTimeCost());
-                    log.info("用户 {} 抢到过红包 {} ，查询结果", userId, key);
+                            share, timeCost);
+                    log.biz("[{}] [用户 {}] 抢到过红包，查询结果", key, userId);
+                    // 使用惰性日志
+                    log.bigdata("{}", () -> BigDataInfo.of(
+                            BigDataInfo.Status.SHARE, key, userId, null,
+                            BigDataInfo.Share.of(BigDataInfo.Share.ShareType.SUCCESS_END, share, timeCost, timestamp),
+                            null, null
+                            ).encode()
+                    );
                 } else {
-                    shareResult = ShareResult.share(ShareResult.ShareType.FAIL_END, mapResult, -1, -1L);
-                    log.info("用户 {} 没抢到红包 {} ，查询结果", userId, key);
+                    shareResult = ShareResult.share(ShareResult.ShareType.FAIL_END, mapResult, 0, 0L);
+                    log.biz("[{}] [用户 {}] 没抢到红包，查询结果", key, userId);
+                    // 使用惰性日志
+                    log.bigdata("{}", () -> BigDataInfo.of(
+                            BigDataInfo.Status.SHARE, key, userId, null,
+                            BigDataInfo.Share.of(BigDataInfo.Share.ShareType.FAIL_END, 0, 0L, timestamp),
+                            null, null
+                            ).encode()
+                    );
                 }
             }
             redPacketResult = RedPacketResult.shareSuccess(shareResult);

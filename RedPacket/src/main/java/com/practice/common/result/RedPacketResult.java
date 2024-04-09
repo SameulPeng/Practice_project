@@ -44,6 +44,9 @@ public class RedPacketResult<T> {
         this.result = result;
     }
 
+    /**
+     * 错误类型
+     */
     public enum ErrorType {
         /**
          * 未知错误

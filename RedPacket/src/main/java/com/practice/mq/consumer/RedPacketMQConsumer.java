@@ -1,11 +1,14 @@
 package com.practice.mq.consumer;
 
+import com.practice.common.logging.ExtLogger;
+import com.practice.common.pojo.BigDataInfo;
+import com.practice.common.pojo.ShareInfo;
+import com.practice.common.util.RedPacketKeyUtil;
 import com.practice.config.RedPacketProperties;
 import com.practice.extension.RedPacketExtensionComposite;
 import com.practice.mapper.AccountInterface;
 import com.practice.service.RedPacketService;
-import com.practice.util.RedPacketKeyUtil;
-import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.Level;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.annotation.SelectorType;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -22,7 +25,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.ClassUtils;
 
 import javax.annotation.PostConstruct;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -31,7 +36,6 @@ import java.util.concurrent.TimeUnit;
 /**
  * 结算消息消费者
  */
-@Slf4j
 @Component
 @Profile("biz")
 @RocketMQMessageListener(
@@ -44,6 +48,7 @@ import java.util.concurrent.TimeUnit;
         consumeTimeout = 5L
 )
 public class RedPacketMQConsumer implements RocketMQListener<String> {
+    private static final ExtLogger log = ExtLogger.create(RedPacketMQConsumer.class); // 日志Logger对象
     @Autowired
     @SuppressWarnings("rawtypes")
     private RedisTemplate redisTemplate;
@@ -79,7 +84,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     }
 
     /**
-     * 抢红包结算<br></br>
+     * 抢红包结算<br/>
      * RocketMQ底层默认实现了多线程消费，默认线程数为20
      * @param key 红包key
      */
@@ -88,6 +93,9 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     public void onMessage(String key) {
         String publisherId = RedPacketKeyUtil.parseUserId(key);
         String resultKey = redPacketProperties.getBiz().getResultPrefix() + key;
+        Map<String, String> mapResult = null;
+        int amount = RedPacketKeyUtil.parseAmount(key);
+        long timestamp = System.currentTimeMillis();
 
         // 使用分布式锁Redisson，保证幂等性处理的并发安全
         /*
@@ -108,10 +116,10 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
             Long expire = redisTemplate.getExpire(resultKey);
             // 如果红包结果key的过期时间不是-1，表示已经被设置过期时间或已经过期，即结算处理已经完成，当前消息是重复消息，应当忽略
             if (expire != null && expire == -1) {
-                Map<String, String> mapResult = redisTemplate.opsForHash().entries(resultKey);
-                // 整理抢红包结果
-                int amount = RedPacketKeyUtil.parseAmount(key);
+                mapResult = redisTemplate.opsForHash().entries(resultKey);
+                // 整理红包结果
                 Map<String, Integer> result = settle(mapResult, amount, publisherId);
+                log.biz("[{}] [ ] 红包结算结果 {} ", key, result);
                 // 开启事务，当Redis中的key成功设置过期时间后，提交账户操作
                 transactionTemplate.execute(new TransactionCallbackWithoutResult() {
                     @Override
@@ -123,20 +131,29 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
                         Long success = (Long) redisTemplate.execute(new DefaultRedisScript<>(settleScript, Long.class),
                                 Arrays.asList(resultKey), String.valueOf(redPacketProperties.getBiz().getResultKeepTime()));
                         if (success == null) {
-                            throw new RuntimeException("访问Redis异常，结算失败");
+                            throw new RuntimeException("[" + key + "] 访问Redis异常，结算失败");
                         }
                         if (success != 1) {
-                            throw new RuntimeException("重复结算，结算失败");
+                            throw new RuntimeException("[" + key + "] 重复结算，结算失败");
                         }
                     }
                 });
-                log.info("红包 {} 结算完成", key);
+                log.biz("[{}] [ ] 红包结算完成", key);
 
                 // 执行红包结算后具有幂等性的扩展方法
                 extensionComposite.afterSettlementIdempotent(key);
             }
         } finally {
             lock.unlock();
+        }
+
+        if (mapResult != null && log.isEnabled(Level.getLevel("BIGDATA"))) {
+            Map<String, ShareInfo> map = fullSettle(mapResult);
+            log.bigdata("{}", BigDataInfo.of(
+                    BigDataInfo.Status.SETTLE, key, null, null, null,
+                    BigDataInfo.Settle.of(map, amount, timestamp), null
+                    ).encode()
+            );
         }
 
         // 执行红包结算后的扩展方法
@@ -146,6 +163,13 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         redPacketService.removeFromAtomicMap(key);
     }
 
+    /**
+     * 整理红包结果
+     * @param mapResult 从Redis获取的红包结果原始信息
+     * @param amount 红包总金额
+     * @param publisherId 发起用户ID
+     * @return 整理后的红包结果
+     */
     private Map<String, Integer> settle(Map<String, String> mapResult, int amount, String publisherId) {
         HashMap<String, Integer> result = new HashMap<>();
 
@@ -154,7 +178,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         // 如果红包的发起者也参与了抢红包，则先移除，便于整理
         mapResult.remove(publisherId);
         // 遍历红包结果
-        for (Map.Entry<String, String> entry :mapResult.entrySet()) {
+        for (Map.Entry<String, String> entry : mapResult.entrySet()) {
             // 从每项结果提取金额
             String value = entry.getValue();
             int share = Integer.parseInt(value.substring(0, value.indexOf('-')));
@@ -165,7 +189,29 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         // 没有被抢完的红包金额以及本人抢到的红包金额，退回到发起者的账户
         if (amount > 0) result.put(publisherId, amount);
 
-        log.info("结算结果： {} ", result);
+        return result;
+    }
+
+    /**
+     * 解析红包结果原始信息
+     * @param mapResult 从Redis获取的红包结果原始信息
+     * @return 解析后的红包结果
+     */
+    private Map<String, ShareInfo> fullSettle(Map<String, String> mapResult) {
+        HashMap<String, ShareInfo> result = new HashMap<>();
+
+        // 移除预生成结果占位项
+        mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
+        // 遍历红包结果
+        for (Map.Entry<String, String> entry : mapResult.entrySet()) {
+            // 从每项结果提取耗时和金额
+            String value = entry.getValue();
+            int idx = value.indexOf('-');
+            ShareInfo info = new ShareInfo(Integer.parseInt(value.substring(0, idx)),
+                    RedPacketKeyUtil.decodeTimeCost(value.substring(idx + 1)));
+            result.put(entry.getKey(), info);
+        }
+
         return result;
     }
 }

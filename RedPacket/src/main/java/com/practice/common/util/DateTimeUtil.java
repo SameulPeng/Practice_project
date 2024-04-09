@@ -1,4 +1,4 @@
-package com.practice.util;
+package com.practice.common.util;
 
 import java.time.Instant;
 import java.time.ZoneId;
