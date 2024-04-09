@@ -36,6 +36,18 @@ public class ShareResult {
         return new ShareResult(2, msg, null, share, timeCost);
     }
 
+    public static ShareResult share(ShareType type) {
+        return share(type, null, 0, 0L);
+    }
+
+    public static ShareResult share(ShareType type, int share, long timeCost) {
+        return share(type, null, share, timeCost);
+    }
+
+    public static ShareResult share(ShareType type, Map<String, Object> mapResult) {
+        return share(type, mapResult, 0, 0L);
+    }
+
     public static ShareResult share(ShareType type, Map<String, Object> mapResult, int share, long timeCost) {
         return switch (type) {
             case SUCCESS_ONGOING ->

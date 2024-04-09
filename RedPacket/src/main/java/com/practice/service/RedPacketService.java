@@ -341,7 +341,7 @@ public class RedPacketService {
                     // 如果标识为0，表示抢不到红包或红包结束后的结果查询，进一步判断用户是否抢到过红包
                     if (mapResult == null) {
                         // 如果红包结果为空，表示红包结果key已经过期
-                        shareResult = ShareResult.share(ShareResult.ShareType.FAIL_NOT_FOUND, null, 0, 0L);
+                        shareResult = ShareResult.share(ShareResult.ShareType.FAIL_NOT_FOUND);
                         log.biz("[{}] [用户 {}] 查询一个过早的红包结果", key, userId);
                         // 使用惰性日志
                         log.bigdata("{}", () -> BigDataInfo.of(
@@ -398,7 +398,7 @@ public class RedPacketService {
                             ).encode()
                     );
                 } else {
-                    shareResult = ShareResult.share(ShareResult.ShareType.FAIL_END, mapResult, 0, 0L);
+                    shareResult = ShareResult.share(ShareResult.ShareType.FAIL_END, mapResult);
                     log.biz("[{}] [用户 {}] 没抢到红包，查询结果", key, userId);
                     // 使用惰性日志
                     log.bigdata("{}", () -> BigDataInfo.of(

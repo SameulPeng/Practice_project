@@ -2,6 +2,7 @@ package com.practice.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.Map;
@@ -18,4 +19,7 @@ public interface AccountMapper {
     void increaseBalance(String userId, int amount);
 
     void batchIncreaseBalance(@Param("resultMap") Map<String, Integer> resultMap);
+
+    @Select("select user_id from account where username = #{username} and password = #{password}")
+    String checkAccount(String username, String password);
 }

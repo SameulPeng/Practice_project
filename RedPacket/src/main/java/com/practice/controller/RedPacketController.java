@@ -42,6 +42,19 @@ public class RedPacketController {
     @SuppressWarnings("rawtypes")
     public RedPacketResult publish(@RequestBody RedPacketInfo info, HttpServletRequest request) {
         String userId = info.getUserId();
+        // 从请求域获取当前登录的用户ID，检查是否与参与抢红包用户ID一致
+        String uid = (String) request.getAttribute("userId");
+        if (!userId.equals(uid)) {
+            log.biz("[ ] [用户 {}] 发起抢红包，与当前登录用户 {} 不匹配", userId, uid);
+            // 使用惰性日志
+            log.bigdata("{}", () -> BigDataInfo.of(
+                            BigDataInfo.Status.ERROR, null, userId,
+                            null, null, null, BigDataInfo.ErrorType.USER_MISMATCH
+                    ).encode()
+            );
+            return RedPacketResult.error(RedPacketResult.ErrorType.USER_MISMATCH);
+        }
+
         int amount = info.getAmount();
         int shareNum = info.getShareNum();
         int expireTime = info.getExpireTime();
@@ -83,9 +96,6 @@ public class RedPacketController {
             return RedPacketResult.error(RedPacketResult.ErrorType.WRONG_EXPIRE_TIME);
         }
 
-        // 将用户ID放入请求域，在未知异常处理时获取
-        request.setAttribute("userId", userId);
-
         long timestamp = System.currentTimeMillis();
         // 使用JVM编号、线程ID、用户ID、红包金额、当前时间戳生成红包key
         String key = RedPacketKeyUtil.generateKey(
@@ -112,8 +122,18 @@ public class RedPacketController {
     @GetMapping("/redpacket/share")
     @SuppressWarnings("rawtypes")
     public RedPacketResult share(@RequestParam String key, @RequestParam String userId, HttpServletRequest request) {
-        // 将用户ID放入请求域，在未知异常处理时获取
-        request.setAttribute("userId", userId);
+        // 从请求域获取当前登录的用户ID，检查是否与参与抢红包用户ID一致
+        String uid = (String) request.getAttribute("userId");
+        if (!userId.equals(uid)) {
+            log.biz("[{}] [用户 {}] 参与抢红包，与当前登录用户 {} 不匹配", key, userId, uid);
+            // 使用惰性日志
+            log.bigdata("{}", () -> BigDataInfo.of(
+                            BigDataInfo.Status.ERROR, null, userId,
+                            null, null, null, BigDataInfo.ErrorType.USER_MISMATCH
+                    ).encode()
+            );
+            return RedPacketResult.error(RedPacketResult.ErrorType.USER_MISMATCH);
+        }
         return redPacketService.share(key, userId);
     }
 
@@ -150,26 +170,5 @@ public class RedPacketController {
                 ).encode()
         );
         return RedPacketResult.error(RedPacketResult.ErrorType.ILLEGAL_ACCOUNT);
-    }
-
-    /**
-     * 处理未知异常
-     */
-    @ExceptionHandler(Throwable.class)
-    @SuppressWarnings("rawtypes")
-    public RedPacketResult unhandled(Throwable e, HttpServletRequest request) {
-        // 按照Throwable类的printStackTrace()方法的逻辑拼接异常栈信息字符串
-        StringBuilder sb = new StringBuilder(System.lineSeparator()).append(e);
-        for (StackTraceElement traceElement : e.getStackTrace()) {
-            sb.append(System.lineSeparator()).append("\tat ").append(traceElement);
-        }
-        log.error("未处理异常：{}", sb);
-        // 使用惰性日志
-        log.bigdata("{}", () -> BigDataInfo.of(
-                BigDataInfo.Status.ERROR, null, (String) request.getAttribute("userId"),
-                null, null, null, BigDataInfo.ErrorType.UNKNOWN_ERROR
-                ).encode()
-        );
-        return RedPacketResult.error(RedPacketResult.ErrorType.UNKNOWN_ERROR);
     }
 }

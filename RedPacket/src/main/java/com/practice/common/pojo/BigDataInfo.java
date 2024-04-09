@@ -485,7 +485,11 @@ public class BigDataInfo {
         /**
          * 参与抢红包无法获得有效结果
          */
-        SHARE_ERROR(6);
+        SHARE_ERROR(6),
+        /**
+         * 用户不匹配
+         */
+        USER_MISMATCH(7);
 
         private final Integer code;
 
@@ -507,6 +511,7 @@ public class BigDataInfo {
                 case 4 -> WRONG_SHARE_NUM;
                 case 5 -> WRONG_EXPIRE_TIME;
                 case 6 -> SHARE_ERROR;
+                case 7 -> USER_MISMATCH;
                 default -> throw new IllegalStateException("Unexpected ErrorType: " + code);
             };
         }

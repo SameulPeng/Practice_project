@@ -7,7 +7,6 @@ import com.practice.common.result.RedPacketResult;
 import com.practice.common.result.ShareResult;
 import com.practice.common.util.RedPacketKeyUtil;
 import com.practice.config.RedPacketProperties;
-import org.apache.logging.log4j.util.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -26,7 +25,7 @@ public class ShareInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 拦截参与抢红包请求
+        // 拦截参与抢红包请求，获取红包key
         String key = request.getParameter("key");
         // 计算红包的访问时限
         long limit = RedPacketKeyUtil.parseTimestamp(key)
@@ -35,6 +34,7 @@ public class ShareInterceptor implements HandlerInterceptor {
         // 对访问时限以内的红包的查询可以放行，否则拒绝
         long timestamp = System.currentTimeMillis();
         if (timestamp > limit) {
+            // 设置响应头信息的内容类型和字符集
             response.setContentType("application/json;charset=UTF-8");
             // 进行找不到红包的响应，转换为JSON格式字符串写出
             new ObjectMapper().writeValue(

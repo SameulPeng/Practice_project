@@ -121,7 +121,7 @@ public class RedPacketDao {
             // 如果结果为金额耗时格式，表示已经参与过抢红包，解析金额和耗时
             int idx = result.indexOf('-');
             return ShareResult.share(
-                    ShareResult.ShareType.FAIL_REDO, null,
+                    ShareResult.ShareType.FAIL_REDO,
                     Integer.parseInt(result.substring(0, idx)),
                     RedPacketKeyUtil.decodeTimeCost(result.substring(idx + 1))
             );
@@ -132,11 +132,10 @@ public class RedPacketDao {
                     ShareResult.share(
                             ShareResult.ShareType.FAIL_END,
                             // 查询红包结果
-                            redisTemplate.opsForHash().entries(resultKey),
-                            0, 0L
+                            redisTemplate.opsForHash().entries(resultKey)
                     )
                     // 如果结果为正整数，表示抢到红包
-                    : ShareResult.share(ShareResult.ShareType.SUCCESS_ONGOING, null, share, timeCost);
+                    : ShareResult.share(ShareResult.ShareType.SUCCESS_ONGOING, share, timeCost);
         }
     }
 }
