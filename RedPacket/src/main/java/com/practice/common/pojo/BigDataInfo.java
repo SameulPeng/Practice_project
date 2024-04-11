@@ -88,7 +88,6 @@ public class BigDataInfo {
      * @param encodedString 编码字符串
      * @return 红包行为信息
      */
-    @SuppressWarnings("unchecked")
     public static BigDataInfo decode(String encodedString) {
         // 格式为： 结果状态（1字节） + 英文逗号（1字节） + 红包key + 英文逗号（1字节） + 用户ID + 英文逗号（1字节） + 发起抢红包信息 / 参与抢红包信息 / 错误类型
 
@@ -115,7 +114,7 @@ public class BigDataInfo {
      * @param byteNum 字节数
      * @return 字节数组
      */
-    public static byte[] i2bytes(long i, int byteNum) {
+    private static byte[] i2bytes(long i, int byteNum) {
         byte[] bytes = new byte[byteNum];
         for (int k = 0; k < byteNum; k++) {
             // 截取整型数i二进制表示的第(k + 1)个低8位
@@ -129,7 +128,7 @@ public class BigDataInfo {
      * @param bytes 字节数组
      * @return 整型数
      */
-    public static long bytes2i(byte[] bytes) {
+    private static long bytes2i(byte[] bytes) {
         long l = 0L;
         for (int k = 0; k < bytes.length; k++) {
             // 填充整型数l二进制表示的第(k + 1)个低8位
@@ -164,7 +163,7 @@ public class BigDataInfo {
          * @param ordinal 枚举值序号
          * @return 结果状态
          */
-        public static Status forOrdinal(int ordinal) {
+        private static Status forOrdinal(int ordinal) {
             return switch (ordinal) {
                 case 0 -> ERROR;
                 case 1 -> PUBLISH;
@@ -206,7 +205,7 @@ public class BigDataInfo {
          * 将发起抢红包信息编码为字节数组
          * @return 字节数组
          */
-        public byte[] encode() {
+        private byte[] encode() {
             // 格式为： 红包总金额（4字节） + 红包份数（2字节） + 红包有效期（3字节） + 发起抢红包毫秒时间戳（6字节）
 
             // 将发起抢红包信息编码为4个字节数组
@@ -231,7 +230,7 @@ public class BigDataInfo {
          * @param encoded 字节数组
          * @return 发起抢红包信息
          */
-        public static Publish decode(byte[] encoded) {
+        private static Publish decode(byte[] encoded) {
             // 格式为： 红包总金额（4字节） + 红包份数（2字节） + 红包有效期（3字节） + 红包发起毫秒时间戳（6字节）
 
             // 解码字节数组，封装发起抢红包信息
@@ -276,7 +275,7 @@ public class BigDataInfo {
          * 将参与抢红包信息编码为字节数组
          * @return 字节数组
          */
-        public byte[] encode() {
+        private byte[] encode() {
             // 格式为： 参与抢红包结果类型（1字节） + 抢到的红包金额（4字节） + 抢到红包的耗时（5字节） + 参与抢红包毫秒时间戳（6字节）
 
             // 将参与抢红包信息编码为4个字节数组
@@ -301,7 +300,7 @@ public class BigDataInfo {
          * @param encoded 字节数组
          * @return 发起抢红包信息
          */
-        public static Share decode(byte[] encoded) {
+        private static Share decode(byte[] encoded) {
             // 格式为： 参与抢红包结果类型（1字节） + 抢到的红包金额（4字节） + 抢到红包的耗时（5字节） + 参与抢红包毫秒时间戳（6字节）
 
             // 解码字节数组，封装参与抢红包信息
@@ -402,7 +401,7 @@ public class BigDataInfo {
          * 将结算信息编码为字节数组
          * @return 字节数组
          */
-        public byte[] encode() {
+        private byte[] encode() {
             // 格式为： 是否被抢完（1字节） + 参与抢红包人数（2字节） + 抢到的最大红包金额（4字节） + 抢到的最小红包金额（4字节） +
             //          抢到红包的最短耗时（5字节） + 抢到红包的最长耗时（5字节） + 红包结算毫秒时间戳（6字节）
 
@@ -431,7 +430,7 @@ public class BigDataInfo {
          * @param encoded 字节数组
          * @return 结算信息
          */
-        public static Settle decode(byte[] encoded) {
+        private static Settle decode(byte[] encoded) {
             // 格式为： 是否被抢完（1字节） + 参与抢红包人数（2字节） + 抢到的最大红包金额（4字节） + 抢到的最小红包金额（4字节） +
             //          抢到红包的最短耗时（5字节） + 抢到红包的最长耗时（5字节） + 红包结算毫秒时间戳（6字节）
 
@@ -502,7 +501,7 @@ public class BigDataInfo {
          * @param code 错误码
          * @return 错误类型
          */
-        public static ErrorType forCode(int code) {
+        private static ErrorType forCode(int code) {
             return switch (code) {
                 case 0 -> UNKNOWN_ERROR;
                 case 1 -> BALANCE_NOT_ENOUGH;

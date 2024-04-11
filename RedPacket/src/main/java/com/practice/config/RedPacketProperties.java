@@ -28,17 +28,20 @@ public class RedPacketProperties {
      */
     @PostConstruct
     private void init() throws IllegalPropertyException {
-        if (biz.getKeyPrefix().length() > 0x40
+        if (biz.getKeyPrefix() == null
+                || biz.getKeyPrefix().length() > 0x40
                 || !isAllPrintableAscii(biz.getKeyPrefix())) {
             throw new IllegalPropertyException("红包Key前缀设置有误，请设置在64个字符以内，并且只包含ASCII编码可打印字符：red-packet.biz.key-prefix");
         }
 
-        if (biz.getResultPrefix().length() > 0x40
+        if (biz.getResultPrefix() == null
+                || biz.getResultPrefix().length() > 0x40
                 || !isAllPrintableAscii(biz.getResultPrefix())) {
             throw new IllegalPropertyException("红包结果Key前缀设置有误，请设置在64个字符以内，并且只包含ASCII编码可打印字符：red-packet.biz.result-prefix");
         }
 
-        if (biz.getResultPlaceholder().length() > 0x40
+        if (biz.getResultPlaceholder() == null
+                || biz.getResultPlaceholder().length() > 0x40
                 || !isAllPrintableAscii(biz.getResultPlaceholder())) {
             throw new IllegalPropertyException("红包结果Key占位项设置有误，请设置在64个字符以内，并且只包含ASCII编码可打印字符：red-packet.biz.result-placeholder");
         }
@@ -65,6 +68,8 @@ public class RedPacketProperties {
                 || biz.getResultKeepTime() > 2592000) {
             throw new IllegalPropertyException("红包结果保留时长设置有误：red-packet.biz.result-keep-time");
         }
+
+        // todo
 
         if (settlementSqlBatch != SqlBatch.NON_BATCHED
                 && settlementSqlBatch != SqlBatch.NON_PREPARED
@@ -106,6 +111,8 @@ public class RedPacketProperties {
         private int maxExpireTime; // 红包最长有效期，单位为秒，上限为16777215，约194天
         private int minExpireTime; // 红包最短有效期，单位为秒，上限为16777215，约194天
         private int resultKeepTime = 3600; // 红包结算后结果保留时长，单位为秒，上限为2592000，即30天
+        private int shareRankNum = 10; // 参与抢红包金额排名数量，即显示抢红包金额最大的前若干名
+        private int timeCostRankNum = 10; // 参与抢红包耗时排名数量，即显示抢红包耗时最短的前若干名
     }
 
     /**

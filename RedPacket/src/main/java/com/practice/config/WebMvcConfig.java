@@ -12,8 +12,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
-    @Autowired
     private ShareInterceptor shareInterceptor;
+
+    @Autowired
+    private void setShareInterceptor(ShareInterceptor shareInterceptor) {
+        this.shareInterceptor = shareInterceptor;
+    }
 
     /**
      * 注册拦截器
@@ -23,6 +27,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 超过红包的访问时限的访问请求将被拒绝
         registry.addInterceptor(shareInterceptor).addPathPatterns("/redpacket/share");
         // 未登录的访问请求将被拒绝
-        registry.addInterceptor(new LoginInterceptor()).addPathPatterns("/redpacket/publish", "/redpacket/share");
+//        registry.addInterceptor(new LoginInterceptor()).addPathPatterns("/redpacket/publish", "/redpacket/share");
     }
 }

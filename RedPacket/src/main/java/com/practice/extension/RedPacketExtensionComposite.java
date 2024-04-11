@@ -14,8 +14,12 @@ import java.util.Map;
 @Slf4j
 @Component
 public class RedPacketExtensionComposite implements RedPacketExtension {
-    @Autowired(required = false)
     private List<RedPacketExtension> extensions; // 依赖注入所有抢红包业务扩展接口实现类组件
+
+    @Autowired(required = false)
+    private void setExtensions(List<RedPacketExtension> extensions) {
+        this.extensions = extensions;
+    }
 
     /**
      * 发起抢红包前

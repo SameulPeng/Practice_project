@@ -63,7 +63,7 @@ public class ShareResult {
         };
     }
 
-    public ShareResult(int status, String msg, Map<String, Object> mapResult, int share, long timeCost) {
+    private ShareResult(int status, String msg, Map<String, Object> mapResult, int share, long timeCost) {
         this.status = status;
         this.msg = msg;
         this.mapResult = mapResult;

@@ -19,7 +19,7 @@ public class PublishResult {
         return new PublishResult(dateTime, amount, shareNum, expireTime);
     }
 
-    public PublishResult(String dateTime, int amount, int shareNum, int expireTime) {
+    private PublishResult(String dateTime, int amount, int shareNum, int expireTime) {
         this.dateTime = dateTime;
         this.amount = amount;
         this.shareNum = shareNum;

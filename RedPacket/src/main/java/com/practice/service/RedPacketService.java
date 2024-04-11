@@ -35,17 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Profile("biz")
 public class RedPacketService {
     private final ExtLogger log = ExtLogger.create(RedPacketService.class); // 日志Logger对象
-    @Autowired
     private RedPacketDao redPacketDao;
-    @Autowired
     private AccountInterface accountInterface;
-    @Autowired
     private RocketMQTemplate rocketMQTemplate;
-    @Autowired
     private TransactionTemplate transactionTemplate;
-    @Autowired
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
-    @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
     private ConcurrentLruLocalCache<Map<String, Object>> cache; // 本地缓存，存储红包key对应的抢红包结果
     private ConcurrentHashMap<String, AtomicInteger> atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
@@ -53,6 +47,36 @@ public class RedPacketService {
     private final ScheduledExecutorService scheduledPool = // 检查原子整数Map泄漏问题的巡逻线程的线程池
             Executors.newScheduledThreadPool(1, r -> new Thread(r, "KeyLeakPatroller"));
     private ExecutorService transactionPool; // 异步处理发起抢红包的多个网络通信操作的线程池
+
+    @Autowired
+    private void setRedPacketDao(RedPacketDao redPacketDao) {
+        this.redPacketDao = redPacketDao;
+    }
+
+    @Autowired
+    private void setAccountInterface(AccountInterface accountInterface) {
+        this.accountInterface = accountInterface;
+    }
+
+    @Autowired
+    private void setRocketMQTemplate(RocketMQTemplate rocketMQTemplate) {
+        this.rocketMQTemplate = rocketMQTemplate;
+    }
+
+    @Autowired
+    private void setTransactionTemplate(TransactionTemplate transactionTemplate) {
+        this.transactionTemplate = transactionTemplate;
+    }
+
+    @Autowired
+    private void setExtensionComposite(RedPacketExtensionComposite extensionComposite) {
+        this.extensionComposite = extensionComposite;
+    }
+
+    @Autowired
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     @PostConstruct
     private void init() throws NoSuchFieldException, IllegalAccessException {
@@ -331,6 +355,7 @@ public class RedPacketService {
         long timestamp = System.currentTimeMillis();
         RedPacketResult redPacketResult;
         boolean checkShareSuccess = false;
+
         if (mapResult == null && shareResult == null) {
             redPacketResult = RedPacketResult.error(RedPacketResult.ErrorType.SHARE_ERROR);
         } else {

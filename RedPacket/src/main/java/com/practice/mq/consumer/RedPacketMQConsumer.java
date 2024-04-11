@@ -37,7 +37,7 @@ import java.util.concurrent.TimeUnit;
  * 结算消息消费者
  */
 @Component
-@Profile("biz")
+@Profile("rocketmq")
 @RocketMQMessageListener(
         consumerGroup = "RedPacketMQConsumer",
         topic = "RedPacketSettlement",
@@ -49,22 +49,51 @@ import java.util.concurrent.TimeUnit;
 )
 public class RedPacketMQConsumer implements RocketMQListener<String> {
     private static final ExtLogger log = ExtLogger.create(RedPacketMQConsumer.class); // 日志Logger对象
-    @Autowired
     @SuppressWarnings("rawtypes")
     private RedisTemplate redisTemplate;
-    @Autowired
     private TransactionTemplate transactionTemplate;
-    @Autowired
     private RedissonClient redisson;
-    @Autowired
     private RedPacketService redPacketService;
-    @Autowired
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
-    @Autowired
     private AccountInterface accountInterface; // 模拟账户业务接口类
-    @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
     private String settleScript; // Redis红包结果key设置过期时间Lua脚本
+
+    @Autowired
+    @SuppressWarnings("rawtypes")
+    private void setRedisTemplate(RedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
+    @Autowired
+    private void setTransactionTemplate(TransactionTemplate transactionTemplate) {
+        this.transactionTemplate = transactionTemplate;
+    }
+
+    @Autowired
+    private void setRedisson(RedissonClient redisson) {
+        this.redisson = redisson;
+    }
+
+    @Autowired
+    private void setRedPacketService(RedPacketService redPacketService) {
+        this.redPacketService = redPacketService;
+    }
+
+    @Autowired
+    private void setExtensionComposite(RedPacketExtensionComposite extensionComposite) {
+        this.extensionComposite = extensionComposite;
+    }
+
+    @Autowired
+    private void setAccountInterface(AccountInterface accountInterface) {
+        this.accountInterface = accountInterface;
+    }
+
+    @Autowired
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     @PostConstruct
     private void init() {

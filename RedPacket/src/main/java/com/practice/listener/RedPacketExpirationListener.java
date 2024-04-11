@@ -17,16 +17,28 @@ import org.springframework.stereotype.Component;
  * 需要在Redis服务器端启用key过期事件功能
  */
 @Component
-@Profile("biz")
+@Profile("redis")
 @ConditionalOnProperty("spring.redis.key-listener")
 public class RedPacketExpirationListener extends KeyExpirationEventMessageListener {
     private static final ExtLogger log = ExtLogger.create(RedPacketExpirationListener.class); // 日志Logger对象
-    @Autowired
     private RedPacketService redPacketService;
-    @Autowired
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
-    @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
+
+    @Autowired
+    private void setRedPacketService(RedPacketService redPacketService) {
+        this.redPacketService = redPacketService;
+    }
+
+    @Autowired
+    private void setExtensionComposite(RedPacketExtensionComposite extensionComposite) {
+        this.extensionComposite = extensionComposite;
+    }
+
+    @Autowired
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     public RedPacketExpirationListener(RedisMessageListenerContainer listenerContainer) {
         super(listenerContainer);

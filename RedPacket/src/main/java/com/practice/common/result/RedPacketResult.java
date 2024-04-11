@@ -66,7 +66,7 @@ public class RedPacketResult<T> {
         return new RedPacketResult<>(6, "登出成功", null);
     }
 
-    public RedPacketResult(int status, String msg, T result) {
+    private RedPacketResult(int status, String msg, T result) {
         this.status = status;
         this.msg = msg;
         this.result = result;

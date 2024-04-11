@@ -23,11 +23,19 @@ import java.time.format.DateTimeFormatter;
 @Profile("biz")
 public class RedPacketController {
     private static final ExtLogger log = ExtLogger.create(RedPacketController.class); // 日志Logger对象
-    @Autowired
     private RedPacketService redPacketService;
-    @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
     private DateTimeFormatter dateTimeFormatter; // 抢红包发起日期时间的格式化类，线程安全
+
+    @Autowired
+    private void setRedPacketService(RedPacketService redPacketService) {
+        this.redPacketService = redPacketService;
+    }
+
+    @Autowired
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     @PostConstruct
     private void init() {
@@ -43,7 +51,7 @@ public class RedPacketController {
     public RedPacketResult publish(@RequestBody RedPacketInfo info, HttpServletRequest request) {
         String userId = info.getUserId();
         // 从请求域获取当前登录的用户ID，检查是否与参与抢红包用户ID一致
-        String uid = (String) request.getAttribute("userId");
+        /*String uid = (String) request.getAttribute("userId");
         if (!userId.equals(uid)) {
             log.biz("[ ] [用户 {}] 发起抢红包，与当前登录用户 {} 不匹配", userId, uid);
             // 使用惰性日志
@@ -53,7 +61,7 @@ public class RedPacketController {
                     ).encode()
             );
             return RedPacketResult.error(RedPacketResult.ErrorType.USER_MISMATCH);
-        }
+        }*/
 
         int amount = info.getAmount();
         int shareNum = info.getShareNum();
@@ -123,7 +131,7 @@ public class RedPacketController {
     @SuppressWarnings("rawtypes")
     public RedPacketResult share(@RequestParam String key, @RequestParam String userId, HttpServletRequest request) {
         // 从请求域获取当前登录的用户ID，检查是否与参与抢红包用户ID一致
-        String uid = (String) request.getAttribute("userId");
+        /*String uid = (String) request.getAttribute("userId");
         if (!userId.equals(uid)) {
             log.biz("[{}] [用户 {}] 参与抢红包，与当前登录用户 {} 不匹配", key, userId, uid);
             // 使用惰性日志
@@ -133,7 +141,7 @@ public class RedPacketController {
                     ).encode()
             );
             return RedPacketResult.error(RedPacketResult.ErrorType.USER_MISMATCH);
-        }
+        }*/
         return redPacketService.share(key, userId);
     }
 

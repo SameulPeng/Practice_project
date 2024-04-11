@@ -20,13 +20,22 @@ import java.util.concurrent.*;
 @Repository
 @Profile("biz")
 public class RedPacketDao {
-    @Autowired
     @SuppressWarnings("rawtypes")
     private RedisTemplate redisTemplate;
-    @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
     private String shareScript; // Redis抢红包Lua脚本
     private ThreadPoolExecutor pool; // 控制Redis抢红包响应超时的线程池
+
+    @Autowired
+    @SuppressWarnings("rawtypes")
+    private void setRedisTemplate(RedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
+    @Autowired
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     @PostConstruct
     private void init() {

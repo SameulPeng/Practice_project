@@ -16,12 +16,24 @@ import java.util.Map;
 @Component
 @Profile("mysql")
 public class AccountInterface {
-    @Autowired
     private AccountMapper accountMapper;
-    @Autowired
     private SqlSessionFactory sqlSessionFactory;
-    @Autowired
     private RedPacketProperties redPacketProperties; // 配置参数类
+
+    @Autowired
+    private void setAccountMapper(AccountMapper accountMapper) {
+        this.accountMapper = accountMapper;
+    }
+
+    @Autowired
+    private void setSqlSessionFactory(SqlSessionFactory sqlSessionFactory) {
+        this.sqlSessionFactory = sqlSessionFactory;
+    }
+
+    @Autowired
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     public int decreaseBalance(String userId, int amount) {
         return accountMapper.decreaseBalance(userId, amount);

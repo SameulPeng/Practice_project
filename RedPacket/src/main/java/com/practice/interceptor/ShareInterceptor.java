@@ -20,8 +20,12 @@ import javax.servlet.http.HttpServletResponse;
 @Component
 public class ShareInterceptor implements HandlerInterceptor {
     private final static ExtLogger log = ExtLogger.create(ShareInterceptor.class); // 日志Logger对象
+    private RedPacketProperties redPacketProperties; // 配置参数类
+
     @Autowired
-    private RedPacketProperties redPacketProperties;
+    private void setRedPacketProperties(RedPacketProperties redPacketProperties) {
+        this.redPacketProperties = redPacketProperties;
+    }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {

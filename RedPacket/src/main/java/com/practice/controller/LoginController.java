@@ -20,8 +20,12 @@ import java.util.Map;
 @Profile("biz")
 public class LoginController {
     private static final ExtLogger log = ExtLogger.create(LoginController.class); // 日志Logger对象
-    @Autowired
     private AccountMapper accountMapper;
+
+    @Autowired
+    private void setAccountMapper(AccountMapper accountMapper) {
+        this.accountMapper = accountMapper;
+    }
 
     /**
      * 登录
