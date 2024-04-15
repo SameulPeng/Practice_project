@@ -57,8 +57,6 @@ public class RedPacketExpirationListener extends KeyExpirationEventMessageListen
             // 去除红包key前缀
             key = key.substring(keyPrefix.length());
             log.biz("[{}] [ ] 红包过期未被抢完", key);
-            // 从原子整数Map中移除
-            redPacketService.removeFromAtomicMap(key);
             // 执行红包结束且未抢完时的扩展方法
             extensionComposite.onExpire(key);
         } else if (key.startsWith(resultPrefix)) {

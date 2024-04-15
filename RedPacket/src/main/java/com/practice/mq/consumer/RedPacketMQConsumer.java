@@ -7,10 +7,8 @@ import com.practice.common.util.RedPacketKeyUtil;
 import com.practice.config.RedPacketProperties;
 import com.practice.extension.RedPacketExtensionComposite;
 import com.practice.mapper.AccountInterface;
-import com.practice.service.RedPacketService;
 import org.apache.logging.log4j.Level;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.annotation.SelectorType;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -50,7 +48,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     private RedisTemplate redisTemplate;
     private TransactionTemplate transactionTemplate;
     private RedissonClient redisson;
-    private RedPacketService redPacketService;
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
     private AccountInterface accountInterface; // 模拟账户业务接口类
     private RedPacketProperties redPacketProperties; // 配置参数类
@@ -70,11 +67,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     @Autowired
     private void setRedisson(RedissonClient redisson) {
         this.redisson = redisson;
-    }
-
-    @Autowired
-    private void setRedPacketService(RedPacketService redPacketService) {
-        this.redPacketService = redPacketService;
     }
 
     @Autowired
@@ -112,6 +104,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     /**
      * 抢红包结算<br/>
      * RocketMQ底层默认实现了多线程消费，默认线程数为20
+     *
      * @param key 红包key
      */
     @Override
@@ -176,8 +169,8 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         if (mapResult != null && log.isEnabled(Level.getLevel("BIGDATA"))) {
             Map<String, ShareInfo> map = fullSettle(mapResult);
             log.bigdata("{}", BigDataInfo.of(
-                    BigDataInfo.Status.SETTLE, key, null, null, null,
-                    BigDataInfo.Settle.of(map, amount, timestamp), null
+                            BigDataInfo.Status.SETTLE, key, null, null, null,
+                            BigDataInfo.Settle.of(map, amount, timestamp), null
                     ).encode()
             );
         }
@@ -188,8 +181,9 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
 
     /**
      * 整理红包结果
-     * @param mapResult 从Redis获取的红包结果原始信息
-     * @param amount 红包总金额
+     *
+     * @param mapResult   从Redis获取的红包结果原始信息
+     * @param amount      红包总金额
      * @param publisherId 发起用户ID
      * @return 整理后的红包结果
      */
@@ -217,6 +211,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
 
     /**
      * 解析红包结果原始信息
+     *
      * @param mapResult 从Redis获取的红包结果原始信息
      * @return 解析后的红包结果
      */

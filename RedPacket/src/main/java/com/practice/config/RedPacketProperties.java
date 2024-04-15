@@ -210,11 +210,11 @@ public class RedPacketProperties {
         /**
          * 原子整数数量上限
          */
-        private int atomicMaxCount = 128;
+        private int atomicMapSize = 128;
         /**
-         * 原子整数Map泄漏检查时间间隔，单位为秒
+         * 原子整数保留时长，单位为秒
          */
-        private int atomicLeakPatrolInterval = 86400;
+        private int atomicKeepTime = 30;
     }
 
     /**

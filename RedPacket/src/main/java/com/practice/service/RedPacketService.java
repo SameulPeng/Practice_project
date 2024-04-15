@@ -26,7 +26,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.annotation.Nullable;
 import javax.annotation.PostConstruct;
-import java.util.Enumeration;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -42,10 +41,7 @@ public class RedPacketService {
     private RedPacketExtensionComposite extensionComposite; // 抢红包业务扩展组合类
     private RedPacketProperties redPacketProperties; // 配置参数类
     private ConcurrentLruLocalCache<Map<String, Object>> cache; // 本地缓存，存储红包key对应的抢红包结果
-    private ConcurrentHashMap<String, AtomicInteger> atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
-    private final AtomicInteger atomicCount = new AtomicInteger(); // 原子整数当前数量
-    private final ScheduledExecutorService scheduledPool = // 检查原子整数Map泄漏问题的巡逻线程的线程池
-            Executors.newScheduledThreadPool(1, r -> new Thread(r, "KeyLeakPatroller"));
+    private AtomicMap atomicMap; // 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞
     private ExecutorService transactionPool; // 异步处理发起抢红包的多个网络通信操作的线程池
 
     @Autowired
@@ -83,8 +79,10 @@ public class RedPacketService {
         // 初始化本地缓存
         this.cache = new ConcurrentLruLocalCache<>(redPacketProperties.getShare().getCacheSize());
         // 初始化原子整数Map
-        this.atomicMap = new ConcurrentHashMap<>(redPacketProperties.getPublish().getAtomicMaxCount(), 1.0f);
-
+        this.atomicMap = new AtomicMap(
+                redPacketProperties.getPublish().getAtomicKeepTime(),
+                redPacketProperties.getPublish().getAtomicMapSize()
+        );
         // 初始化线程池
         this.transactionPool = new ThreadPoolExecutor(
                 redPacketProperties.getPublish().getMinThreads(),
@@ -94,41 +92,6 @@ public class RedPacketService {
                 r -> new Thread(r, "TransactionHandler"),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
-
-        // 巡逻线程，定期检查原子整数Map中是否存在泄漏
-        /*
-            原子整数Map中的key会通过以下方式移除
-                1.红包被抢完后，由第一个抢不到红包的用户移除
-                2.红包key过期后，由Redis的key过期事件监听器回调移除
-                3.红包结算时，由消息队列的消费者回调移除
-            上述逻辑能够在绝大部分情况下移除key，但也可能全部没有执行成功，导致某个key在原子整数Map中长期存在并且无法访问
-                1.红包没有被抢完
-                2.没有启用Redis的事件监听机制
-                3.由于某些原因，没有接收到消息队列的结算消息
-            因此需要定期检查，避免泄漏
-        */
-        int interval = redPacketProperties.getPublish().getAtomicLeakPatrolInterval();
-        scheduledPool.scheduleAtFixedRate(() -> {
-            // 获取原子整数Map的快照
-            Enumeration<String> keys = atomicMap.keys();
-            while (keys.hasMoreElements()) {
-                String key = keys.nextElement();
-                // 计算红包的有效时限
-                long limit = RedPacketKeyUtil.parseTimestamp(key)
-                        + RedPacketKeyUtil.parseExpireTime(key) * 1000L;
-                if (System.currentTimeMillis() > limit) removeFromAtomicMap(key);
-            }
-            // 以固定时间间隔，定期检查
-        }, interval, interval, TimeUnit.SECONDS);
-    }
-
-    /**
-     * 由Redis消息监听器在监听到红包key过期事件后或通过消息队列的消息进行红包结算时回调
-     * @param key 红包key
-     */
-    public void removeFromAtomicMap(String key) {
-        AtomicInteger i = atomicMap.remove(key);
-        if (i != null) atomicCount.decrementAndGet();
     }
 
     /**
@@ -141,10 +104,10 @@ public class RedPacketService {
 
     /**
      * 发起抢红包，根据大红包总金额和分派数量，预先分成若干小红包
-     * @param key        红包key
-     * @param userId     发起抢红包用户ID
-     * @param amount     红包总金额，单位为分
-     * @param shareNum   拆分小红包份数
+     * @param key 红包key
+     * @param userId 发起抢红包用户ID
+     * @param amount 红包总金额，单位为分
+     * @param shareNum 拆分小红包份数
      * @param expireTime 红包过期时长，单位为秒
      * @param timestamp 红包发起毫秒时间戳
      */
@@ -195,14 +158,8 @@ public class RedPacketService {
             }
         });
 
-        // 如果没有从原子整数池中获取到原子整数，但是原子整数数量未达到上限，则尝试创建新的原子整数
-        // 没有使用getAndUpdate()方法，是因为竞争通常较为激烈，可能会导致多次执行原子整数Map的put操作，虽然具有幂等性，但是较为浪费资源
-        if (atomicCount.getAndIncrement() < redPacketProperties.getPublish().getAtomicMaxCount()) {
-            // 创建红包key对应的原子整数，初始值为红包份数
-            atomicMap.put(key, new AtomicInteger(shareNum));
-        } else {
-            atomicCount.getAndDecrement();
-        }
+        // 创建红包key对应的原子整数，初始值为红包份数
+        atomicMap.put(key, shareNum);
 
         log.biz("[{}] [ ] 红包创建成功，有效期 {} 秒", key, expireTime);
         // 使用惰性日志
@@ -231,37 +188,29 @@ public class RedPacketService {
         ShareResult shareResult = null;
         // 设置最大重试次数，防止缓存穿透导致的死循环
         int tryTimes = 0;
-        while (mapResult == null && shareResult == null && tryTimes++ <= redPacketProperties.getShare().getMaxTryTimes()) {
+        while (mapResult == null && shareResult == null
+                && tryTimes++ <= redPacketProperties.getShare().getMaxTryTimes()) {
             // 如果在本地缓存中找不到对应的key，则准备访问Redis
             if ((mapResult = cache.get(key)) == null) {
                 AtomicInteger count;
-                int decr = 0;
                 // 如果在原子整数Map中找不到对应的key，表示红包已经抢完或者系统中存在大量红包，可以通过竞争锁访问Redis回写本地缓存
-                if ((count = atomicMap.get(key)) == null || (decr = count.decrementAndGet()) < 0) {
+                if ((count = atomicMap.get(key)) == null || count.decrementAndGet() < 0) {
                     // 锁住key对应的字符串常量对象
                     synchronized (key.intern()) {
                         // 如果在本地缓存中仍找不到对应的key，则访问Redis
                         if ((mapResult = cache.get(key)) == null) {
                             shareResult = redPacketDao.share(key, userId);
                             // 如果返回结果为空，表明请求超时，正常释放锁，进入下一轮循环重试
-                            if (shareResult != null && shareResult.getStatus() == 0) {
                                 // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
-                                mapResult = doCache(key, shareResult);
-                            }
+                            if (shareResult != null && shareResult.getStatus() == 0) mapResult = doCache(key, shareResult);
                         }
                     }
-                    // 由第一个抢不到红包的用户负责移除红包key对应的原子整数
-                    if (count != null && decr == -1) removeFromAtomicMap(key);
                 } else {
                     // 原子整数扣减到负数之前，都可以不必竞争锁，直接访问Redis
                     shareResult = redPacketDao.share(key, userId);
                     // 如果返回结果为空，表明请求超时，进入下一轮循环重试
-                    if (shareResult != null && shareResult.getStatus() == 0) {
-                        // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
-                        mapResult = doCache(key, shareResult);
-                        // 如果原子整数还没扣减到负数，但是已经产生了红包结果，说明红包没有被抢完就过期，或通过竞争锁访问Redis的用户先抢完了红包，需要移除红包key对应的原子整数
-                        removeFromAtomicMap(key);
-                    }
+                    // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
+                    if (shareResult != null && shareResult.getStatus() == 0) mapResult = doCache(key, shareResult);
                 }
             }
         }
@@ -434,5 +383,83 @@ public class RedPacketService {
             redPacketResult = RedPacketResult.shareSuccess(shareResult);
         }
         return redPacketResult;
+    }
+
+    /**
+     * 原子整数Map，存储红包key对应的原子整数，用于避免抢红包阻塞<br/>
+     * 内部使用两个Map定期交换的方式实现主动清理<br/>
+     * 原子整数的保留时长，最短为一倍交换间隔，最长为两倍交换间隔
+     */
+    private static class AtomicMap {
+        /**
+         * 0号Map
+         */
+        private final ConcurrentHashMap<String, AtomicInteger> map0;
+        /**
+         * 1号Map
+         */
+        private final ConcurrentHashMap<String, AtomicInteger> map1;
+        /**
+         * 当前Map
+         */
+        private ConcurrentHashMap<String, AtomicInteger> current;
+        /**
+         * 非当前Map
+         */
+        private ConcurrentHashMap<String, AtomicInteger> last;
+        /**
+         * 当前Map原子整数数量
+         */
+        private final AtomicInteger count;
+        /**
+         * 单个Map原子整数数量上限
+         */
+        private final int capacity;
+
+        private AtomicMap(int swapInterval, int capacity) {
+            // 单个Map的容量为原子整数数量上限的一半
+            int capacity0 = capacity >>> 1;
+            this.map0 = new ConcurrentHashMap<>(capacity0, 1.0f);
+            this.map1 = new ConcurrentHashMap<>(capacity0, 1.0f);
+            this.current = map0;
+            this.last = map1;
+            this.count = new AtomicInteger(0);
+            this.capacity = capacity0;
+
+            // 交换线程，根据交换间隔定期清理原子整数
+            Executors.newScheduledThreadPool(1).scheduleAtFixedRate(() -> {
+                // 清空非当前Map
+                last.clear();
+                // 交换当前Map和非当前Map，并将当前Map原子整数数量设置为0
+                ConcurrentHashMap<String, AtomicInteger> map = current;
+                current = last;
+                count.set(0);
+                last = map;
+            }, swapInterval, swapInterval, TimeUnit.SECONDS);
+        }
+
+        /**
+         * 尝试创建红包key对应的原子整数并放入原子整数Map
+         * @param key 红包key
+         * @param shareNum 红包份数
+         */
+        private void put(String key, int shareNum) {
+            // 如果未达到原子整数上限，则为红包key创建对应的原子整数并放入当前Map
+            // 不使用getAndIncrement()方法，防止溢出
+            if (count.getAndUpdate(i -> i < capacity ? ++i : capacity) < capacity) {
+                current.put(key, new AtomicInteger(shareNum));
+            }
+        }
+
+        /**
+         * 尝试获取红包key对应的原子整数
+         * @param key 红包key
+         * @return 红包key对应的原子整数
+         */
+        private AtomicInteger get(String key) {
+            // 在两个Map中查找红包key对应的原子整数
+            AtomicInteger result= map0.get(key);
+            return result != null ? result : map1.get(key);
+        }
     }
 }
