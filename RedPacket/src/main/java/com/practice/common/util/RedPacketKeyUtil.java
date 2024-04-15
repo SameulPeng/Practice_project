@@ -1,14 +1,36 @@
 package com.practice.common.util;
 
+import java.nio.charset.StandardCharsets;
+import java.util.zip.CRC32C;
+
 /**
  * 红包key字符串处理工具类
  */
 public class RedPacketKeyUtil {
-    private final static int SERVICE_ID_CHARS = 2; // JVM编号使用两个字节，不重复范围为0到4095
-    private final static int THREAD_ID_CHARS = 2; // 线程ID使用两个字节，不重复范围为0到4095
-    private final static int AMOUNT_CHARS = 5; // 红包总金额使用5个字节，上限为1073741823，约一千万元
-    private final static int EXPIRE_TIME_CHARS = 4; // 有效期使用4个字节，上限为16777215，约194天
-    private final static int TIMESTAMP_CHARS = 7; // 时间戳使用7个字节，上限为4398046511103，约139年（从1970年1月1日0时0分0秒起）
+    /**
+     * JVM编号使用两个字节，不重复范围为0到4095
+     */
+    private final static int SERVICE_ID_CHARS = 2;
+    /**
+     * 线程ID使用两个字节，不重复范围为0到4095
+     */
+    private final static int THREAD_ID_CHARS = 2;
+    /**
+     * 红包总金额使用5个字节，上限为1073741823，约一千万元
+     */
+    private final static int AMOUNT_CHARS = 5;
+    /**
+     * 有效期使用4个字节，上限为16777215，约194天
+     */
+    private final static int EXPIRE_TIME_CHARS = 4;
+    /**
+     * 时间戳使用7个字节，上限为4398046511103，约139年（从1970年1月1日0时0分0秒起）
+     */
+    private final static int TIMESTAMP_CHARS = 7;
+    /**
+     * 校验和使用8个字节，即CRC32的输出长度
+     */
+    private final static int CHECKSUM_CHARS = 8;
 
     /**
      * 生成红包key
@@ -27,17 +49,38 @@ public class RedPacketKeyUtil {
         String s4 = i2chars(expireTime, EXPIRE_TIME_CHARS);
         String s5 = i2chars(timestamp, TIMESTAMP_CHARS);
 
-        // 格式为： JVM编号 + 线程ID + 红包总金额 + 红包有效期 + 红包发起毫秒时间戳 + 发起用户ID
-        return s1 + s2 + s3 + s4 + s5 + userId;
+        // 格式为： JVM编号 + 线程ID + 红包总金额 + 红包有效期 + 红包发起毫秒时间戳 + 发起用户ID + 校验和
+        String payload = s1 + s2 + s3 + s4 + s5 + userId;
+        String checksum = calculateChecksum(payload);
+        return payload + checksum;
+    }
+
+    /**
+     * 检验红包key合法性
+     * @param key 红包key
+     * @return 红包key负载数据是否正确
+     */
+    public static boolean checkKey(String key) {
+        String payload = getPayload(key);
+        return calculateChecksum(payload).equals(key.substring(key.length() - CHECKSUM_CHARS));
+    }
+
+    /**
+     * 获取红包key负载数据部分
+     * @param key 红包key
+     * @return 红包key负载数据部分字符串
+     */
+    public static String getPayload(String key) {
+        return key.substring(0, key.length() - CHECKSUM_CHARS);
     }
 
     /**
      * 从红包key解析红包总金额
-     * @param key 红包key
+     * @param payload 红包key负载数据部分
      * @return 红包总金额
      */
-    public static int parseAmount(String key) {
-        return (int) chars2i(key.substring(
+    public static int parseAmount(String payload) {
+        return (int) chars2i(payload.substring(
                 SERVICE_ID_CHARS + THREAD_ID_CHARS,
                 SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS
         ));
@@ -45,11 +88,11 @@ public class RedPacketKeyUtil {
 
     /**
      * 从红包key解析红包有效期
-     * @param key 红包key
+     * @param payload 红包key负载数据部分
      * @return 红包有效期
      */
-    public static int parseExpireTime(String key) {
-        return (int) chars2i(key.substring(
+    public static int parseExpireTime(String payload) {
+        return (int) chars2i(payload.substring(
                 SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS,
                 SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS
         ));
@@ -57,11 +100,11 @@ public class RedPacketKeyUtil {
 
     /**
      * 从红包key解析发起时间
-     * @param key 红包key
+     * @param payload 红包key负载数据部分
      * @return 红包发起的毫秒时间戳
      */
-    public static long parseTimestamp(String key) {
-        return chars2i(key.substring(
+    public static long parseTimestamp(String payload) {
+        return chars2i(payload.substring(
                 SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS,
                 SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS + TIMESTAMP_CHARS
         ));
@@ -69,11 +112,11 @@ public class RedPacketKeyUtil {
 
     /**
      * 从红包key解析发起用户ID
-     * @param key 红包key
+     * @param payload 红包key负载数据部分
      * @return 发起用户ID
      */
-    public static String parseUserId(String key) {
-        return key.substring(SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS + TIMESTAMP_CHARS);
+    public static String parseUserId(String payload) {
+        return payload.substring(SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS + TIMESTAMP_CHARS);
     }
 
     /**
@@ -92,6 +135,17 @@ public class RedPacketKeyUtil {
      */
     public static long decodeTimeCost(String encodedTimeCost) {
         return chars2i(encodedTimeCost);
+    }
+
+    /**
+     * 计算校验和并转换为字符串
+     * @param payload 负载数据
+     * @return 校验和字符串
+     */
+    private static String calculateChecksum(String payload) {
+        CRC32C crc32C = new CRC32C();
+        crc32C.update(payload.getBytes(StandardCharsets.UTF_8));
+        return i2chars(crc32C.getValue(), CHECKSUM_CHARS);
     }
 
     /**

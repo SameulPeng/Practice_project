@@ -41,9 +41,6 @@ import java.util.concurrent.TimeUnit;
 @RocketMQMessageListener(
         consumerGroup = "RedPacketMQConsumer",
         topic = "RedPacketSettlement",
-        selectorType = SelectorType.TAG,
-        // 将消息TAG过滤条件设置为当前JVM编号，消费由当前JVM发送的消息
-        selectorExpression = "${red-packet.service-id}",
         // 设置消费超时时间为5分钟
         consumeTimeout = 5L
 )
@@ -187,9 +184,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
 
         // 执行红包结算后的扩展方法
         extensionComposite.afterSettlement(key);
-
-        // 将key从原子整数Map中移除
-        redPacketService.removeFromAtomicMap(key);
     }
 
     /**

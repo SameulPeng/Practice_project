@@ -1,10 +1,14 @@
 package com.practice.extension;
 
+import com.practice.common.annotation.ExtensionPriority;
 import com.practice.common.result.RedPacketResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.PostConstruct;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -19,6 +23,19 @@ public class RedPacketExtensionComposite implements RedPacketExtension {
     @Autowired(required = false)
     private void setExtensions(List<RedPacketExtension> extensions) {
         this.extensions = extensions;
+    }
+
+    @PostConstruct
+    private void init() {
+        if (extensions != null) {
+            // 将业务扩展接口实现类按照优先级进行排序，优先级越高，执行时机越早
+            this.extensions.sort(Comparator.comparingInt(
+                    extension -> {
+                        ExtensionPriority priority = extension.getClass().getAnnotation(ExtensionPriority.class);
+                        return priority == null ? 0 : - priority.value();
+                    }
+            ));
+        }
     }
 
     /**

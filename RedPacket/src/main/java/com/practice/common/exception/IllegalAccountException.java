@@ -9,5 +9,8 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public class IllegalAccountException extends RuntimeException {
+    /**
+     * 用户ID
+     */
     private final String userId;
 }

@@ -51,7 +51,7 @@ public class RedPacketController {
     public RedPacketResult publish(@RequestBody RedPacketInfo info, HttpServletRequest request) {
         String userId = info.getUserId();
         // 从请求域获取当前登录的用户ID，检查是否与参与抢红包用户ID一致
-        /*String uid = (String) request.getAttribute("userId");
+        String uid = (String) request.getAttribute("userId");
         if (!userId.equals(uid)) {
             log.biz("[ ] [用户 {}] 发起抢红包，与当前登录用户 {} 不匹配", userId, uid);
             // 使用惰性日志
@@ -61,7 +61,7 @@ public class RedPacketController {
                     ).encode()
             );
             return RedPacketResult.error(RedPacketResult.ErrorType.USER_MISMATCH);
-        }*/
+        }
 
         int amount = info.getAmount();
         int shareNum = info.getShareNum();
@@ -111,7 +111,10 @@ public class RedPacketController {
                 amount, expireTime, timestamp, userId
         );
 
-        redPacketService.publish(key, userId, amount, shareNum, expireTime, timestamp);
+        // 获取红包key负载数据部分
+        String payload = RedPacketKeyUtil.getPayload(key);
+
+        redPacketService.publish(payload, userId, amount, shareNum, expireTime, timestamp);
 
         return RedPacketResult.publishSuccess(
                 key,
@@ -131,7 +134,7 @@ public class RedPacketController {
     @SuppressWarnings("rawtypes")
     public RedPacketResult share(@RequestParam String key, @RequestParam String userId, HttpServletRequest request) {
         // 从请求域获取当前登录的用户ID，检查是否与参与抢红包用户ID一致
-        /*String uid = (String) request.getAttribute("userId");
+        String uid = (String) request.getAttribute("userId");
         if (!userId.equals(uid)) {
             log.biz("[{}] [用户 {}] 参与抢红包，与当前登录用户 {} 不匹配", key, userId, uid);
             // 使用惰性日志
@@ -141,8 +144,12 @@ public class RedPacketController {
                     ).encode()
             );
             return RedPacketResult.error(RedPacketResult.ErrorType.USER_MISMATCH);
-        }*/
-        return redPacketService.share(key, userId);
+        }
+
+        // 获取红包key负载数据部分
+        String payload = RedPacketKeyUtil.getPayload(key);
+
+        return redPacketService.share(payload, userId);
     }
 
     /**

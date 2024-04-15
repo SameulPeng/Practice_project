@@ -16,12 +16,30 @@ import javax.annotation.PostConstruct;
 @Component
 @ConfigurationProperties(prefix = "red-packet")
 public class RedPacketProperties {
-    private int serviceId; // JVM编号，取值范围为0到4095
-    private SqlBatch settlementSqlBatch = SqlBatch.PREPARED; // 红包结算处理时的SQL批量发送方式
-    private String dateTimePattern = "yyyy-MM-dd HH:mm:ss"; // 发起抢红包响应中的日期时间格式
-    private Biz biz; // 业务相关参数
-    private Publish publish; // 发起抢红包过程相关参数
-    private Share share; // 参与抢红包过程相关参数
+    /**
+     * JVM编号，取值范围为0到4095
+     */
+    private int serviceId;
+    /**
+     * 红包结算处理时的SQL批量发送方式
+     */
+    private SqlBatch settlementSqlBatch = SqlBatch.PREPARED;
+    /**
+     * 发起抢红包响应中的日期时间格式
+     */
+    private String dateTimePattern = "yyyy-MM-dd HH:mm:ss";
+    /**
+     * 业务相关参数
+     */
+    private Biz biz;
+    /**
+     * 发起抢红包过程相关参数
+     */
+    private Publish publish;
+    /**
+     * 参与抢红包过程相关参数
+     */
+    private Share share;
 
     /**
      * 配置参数合法性校验
@@ -69,7 +87,15 @@ public class RedPacketProperties {
             throw new IllegalPropertyException("红包结果保留时长设置有误：red-packet.biz.result-keep-time");
         }
 
-        // todo
+        if (biz.getShareRankNum() < 1
+                || biz.getShareRankNum() > 0x3FF) {
+            throw new IllegalPropertyException("参与抢红包金额排名数量设置有误：red-packet.biz.share-rank-num");
+        }
+
+        if (biz.getTimeCostRankNum() < 1
+                || biz.getTimeCostRankNum() > 0x3FF) {
+            throw new IllegalPropertyException("参与抢红包耗时排名数量设置有误：red-packet.biz.time-cost-rank-num");
+        }
 
         if (settlementSqlBatch != SqlBatch.NON_BATCHED
                 && settlementSqlBatch != SqlBatch.NON_PREPARED
@@ -101,18 +127,66 @@ public class RedPacketProperties {
     @Getter
     @Setter
     public static class Biz {
-        private String keyPrefix; // 红包key前缀，最多64个字符，且只能包含ASCII编码可打印字符（编码范围为32到127）
-        private String resultPrefix; // 红包结果key前缀，最多64个字符，且只能包含ASCII编码可打印字符（编码范围为32到127）
-        private String resultPlaceholder; // 红包结果key占位项，最多64个字符，且只能包含ASCII编码可打印字符（编码范围为32到127）
-        private int maxAmount; // 红包最大金额，单位为分，上限为1073741823，约一千万元
-        private int minAmount; // 红包最小金额，单位为分，上限为1073741823，约一千万元
-        private int maxShareNum; // 红包最大份数，上限为1023
-        private int minShareNum; // 红包最小份数，上限为1023
-        private int maxExpireTime; // 红包最长有效期，单位为秒，上限为16777215，约194天
-        private int minExpireTime; // 红包最短有效期，单位为秒，上限为16777215，约194天
-        private int resultKeepTime = 3600; // 红包结算后结果保留时长，单位为秒，上限为2592000，即30天
-        private int shareRankNum = 10; // 参与抢红包金额排名数量，即显示抢红包金额最大的前若干名
-        private int timeCostRankNum = 10; // 参与抢红包耗时排名数量，即显示抢红包耗时最短的前若干名
+        /**
+         * 红包key前缀<br/>
+         * 最多64个字符，且只能包含ASCII编码可打印字符（编码范围为32到127）
+         */
+        private String keyPrefix = "RedPacket:";
+        /**
+         * 红包结果key前缀<br/>
+         * 最多64个字符，且只能包含ASCII编码可打印字符（编码范围为32到127）
+         */
+        private String resultPrefix = "Result:";
+        /**
+         * 红包结果key占位项<br/>
+         * 最多64个字符，且只能包含ASCII编码可打印字符（编码范围为32到127）
+         */
+        private String resultPlaceholder = "%%%%%%%%%%for_refund%%%%%%%%%%";
+        /**
+         * 红包最大金额，单位为分<br/>
+         * 上限为1073741823，约一千万元
+         */
+        private int maxAmount = 500000;
+        /**
+         * 红包最小金额，单位为分<br/>
+         * 上限为1073741823，约一千万元
+         */
+        private int minAmount = 10;
+        /**
+         * 红包最大份数<br/>
+         * 上限为1023
+         */
+        private int maxShareNum = 100;
+        /**
+         * 红包最小份数<br/>
+         * 上限为1023
+         */
+        private int minShareNum = 1;
+        /**
+         * 红包最长有效期，单位为秒<br/>
+         * 上限为16777215，约194天
+         */
+        private int maxExpireTime = 3600;
+        /**
+         * 红包最短有效期，单位为秒<br/>
+         * 上限为16777215，约194天
+         */
+        private int minExpireTime = 10;
+        /**
+         * 红包结算后结果保留时长，单位为秒<br/>
+         * 上限为2592000，即30天
+         */
+        private int resultKeepTime = 3600;
+        /**
+         * 参与抢红包金额排名数量，即显示抢红包金额最大的前若干名<br/>
+         * 上限为1023
+         */
+        private int shareRankNum = 10;
+        /**
+         * 参与抢红包耗时排名数量，即显示抢红包耗时最短的前若干名<br/>
+         * 上限为1023
+         */
+        private int timeCostRankNum = 10;
     }
 
     /**
@@ -121,11 +195,26 @@ public class RedPacketProperties {
     @Getter
     @Setter
     public static class Publish {
-        private int minThreads = 5; // 发起抢红包线程池核心线程数
-        private int maxThreads = 200; // 发起抢红包线程池最大线程数
-        private int queueSize = 2048; // 发起抢红包线程池阻塞队列大小
-        private int atomicMaxCount = 128; // 原子整数数量上限
-        private int atomicLeakPatrolInterval = 86400; // 原子整数Map泄漏检查时间间隔，单位为秒
+        /**
+         * 发起抢红包线程池核心线程数
+         */
+        private int minThreads = 5;
+        /**
+         * 发起抢红包线程池最大线程数
+         */
+        private int maxThreads = 200;
+        /**
+         * 发起抢红包线程池阻塞队列大小
+         */
+        private int queueSize = 2048;
+        /**
+         * 原子整数数量上限
+         */
+        private int atomicMaxCount = 128;
+        /**
+         * 原子整数Map泄漏检查时间间隔，单位为秒
+         */
+        private int atomicLeakPatrolInterval = 86400;
     }
 
     /**
@@ -134,19 +223,47 @@ public class RedPacketProperties {
     @Getter
     @Setter
     public static class Share {
-        private int minThreads = 5; // 参与抢红包线程池核心线程数
-        private int maxThreads = 200; // 参与抢红包线程池最大线程数
-        private int maxTryTimes = 3; // 抢红包错误重试次数
-        private int timeout = 3000; // 抢红包响应超时，单位为毫秒
-        private int cacheSize = 512; // 本地缓存大小
+        /**
+         * 参与抢红包线程池核心线程数
+         */
+        private int minThreads = 5;
+        /**
+         * 参与抢红包线程池最大线程数
+         */
+        private int maxThreads = 200;
+        /**
+         * 抢红包错误重试次数
+         */
+        private int maxTryTimes = 3;
+        /**
+         * 抢红包响应超时，单位为毫秒
+         */
+        private int timeout = 3000;
+        /**
+         * 本地缓存大小
+         */
+        private int cacheSize = 512;
+        /**
+         * 缓存命中率统计时间间隔，单位为秒
+         */
+        private int cacheHitRatioCheckInterval = 3600;
     }
 
     /**
      * 红包结算处理时的SQL批量发送方式
      */
     public enum SqlBatch {
-        NON_BATCHED, // 逐条发送
-        NON_PREPARED, // 批量发送，但不进行服务端预编译
-        PREPARED // 批量发送，且进行服务端预编译
+        /**
+         * 逐条发送
+         */
+        NON_BATCHED,
+        /**
+         * 批量发送，但不进行服务端预编译
+         */
+        NON_PREPARED,
+        /**
+         * 批量发送，且进行服务端预编译
+         */
+        PREPARED
     }
 }

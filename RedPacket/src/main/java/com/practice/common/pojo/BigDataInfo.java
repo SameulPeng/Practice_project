@@ -17,13 +17,34 @@ import java.util.*;
 @Setter
 @JSONType(orders = {"status", "key", "userId", "publishInfo", "shareInfo", "settleInfo", "errorType"})
 public class BigDataInfo {
-    private Status status; // 结果状态
-    private String key; // 红包key
-    private String userId; // 用户ID
-    private Publish publishInfo; // 发起抢红包信息
-    private Share shareInfo; // 参与抢红包信息
-    private Settle settleInfo; // 结算信息
-    private ErrorType errorType; // 错误类型
+    /**
+     * 结果状态
+     */
+    private Status status;
+    /**
+     * 红包key
+     */
+    private String key;
+    /**
+     * 用户ID
+     */
+    private String userId;
+    /**
+     * 发起抢红包信息
+     */
+    private Publish publishInfo;
+    /**
+     * 参与抢红包信息
+     */
+    private Share shareInfo;
+    /**
+     * 结算信息
+     */
+    private Settle settleInfo;
+    /**
+     * 错误类型
+     */
+    private ErrorType errorType;
 
     private BigDataInfo() {}
 
@@ -183,10 +204,22 @@ public class BigDataInfo {
     @EqualsAndHashCode
     @JSONType(orders = {"amount", "shareNum", "expireTime", "timestamp"})
     public static class Publish {
-        private int amount; // 红包总金额
-        private int shareNum; // 红包份数
-        private int expireTime; // 红包有效期
-        private long timestamp; // 发起抢红包毫秒时间戳
+        /**
+         * 红包总金额
+         */
+        private int amount;
+        /**
+         * 红包份数
+         */
+        private int shareNum;
+        /**
+         * 红包有效期
+         */
+        private int expireTime;
+        /**
+         * 发起抢红包毫秒时间戳
+         */
+        private long timestamp;
 
         private Publish() {}
 
@@ -253,10 +286,22 @@ public class BigDataInfo {
     @EqualsAndHashCode
     @JSONType(orders = {"shareType", "share", "timeCost", "timestamp"})
     public static class Share {
-        private ShareType shareType; // 参与抢红包结果类型
-        private int share; // 抢到的红包金额，要求非负
-        private long timeCost; // 抢到红包的耗时，要求非负
-        private long timestamp; // 参与抢红包毫秒时间戳
+        /**
+         * 参与抢红包结果类型
+         */
+        private ShareType shareType;
+        /**
+         * 抢到的红包金额，要求非负
+         */
+        private int share;
+        /**
+         * 抢到红包的耗时，要求非负
+         */
+        private long timeCost;
+        /**
+         * 参与抢红包毫秒时间戳
+         */
+        private long timestamp;
 
         private Share() {}
 
@@ -360,13 +405,34 @@ public class BigDataInfo {
     @EqualsAndHashCode
     @JSONType(orders = {"finished", "participantNum", "maxShare", "minShare", "shortestTimeCost", "longestTimeCost"})
     public static class Settle {
-        private boolean finished; // 是否被抢完
-        private int participantNum; // 参与抢红包人数
-        private int maxShare; // 抢到的最大红包金额
-        private int minShare; // 抢到的最小红包金额
-        private long shortestTimeCost; // 抢到红包的最短耗时
-        private long longestTimeCost; // 抢到红包的最长耗时
-        private long timestamp; // 红包结算毫秒时间戳
+        /**
+         * 是否被抢完
+         */
+        private boolean finished;
+        /**
+         * 参与抢红包人数
+         */
+        private int participantNum;
+        /**
+         * 抢到的最大红包金额
+         */
+        private int maxShare;
+        /**
+         * 抢到的最小红包金额
+         */
+        private int minShare;
+        /**
+         * 抢到红包的最短耗时
+         */
+        private long shortestTimeCost;
+        /**
+         * 抢到红包的最长耗时
+         */
+        private long longestTimeCost;
+        /**
+         * 红包结算毫秒时间戳
+         */
+        private long timestamp;
 
         private Settle() {}
 

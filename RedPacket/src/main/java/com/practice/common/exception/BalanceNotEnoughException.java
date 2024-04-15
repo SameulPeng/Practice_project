@@ -9,6 +9,12 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public class BalanceNotEnoughException extends RuntimeException {
+    /**
+     * 用户ID
+     */
     private final String userId;
+    /**
+     * 红包总金额
+     */
     private final int amount;
 }

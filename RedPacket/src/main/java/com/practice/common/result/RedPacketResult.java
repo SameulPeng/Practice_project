@@ -11,9 +11,26 @@ import java.nio.charset.StandardCharsets;
  */
 @Getter
 public class RedPacketResult<T> {
-    private final int status; // 响应标识，0表示响应错误，1表示发起抢红包成功，2表示参与抢红包成功，3表示未登录，4表示登录成功，5表示登录失败，6表示登出
-    private final String msg; // 信息，如果发起抢红包成功则封装红包key，如果参与抢红包成功则为空，如果响应错误则封装错误提示信息
-    private final T result; // 结果，如果发起抢红包成功或参与抢红包成功则封装具体结果，如果响应错误则封装错误标识，如果登录成功则封装JWT令牌
+    /**
+     * 响应标识<br/>
+     * 0表示响应错误，1表示发起抢红包成功，2表示参与抢红包成功<br/>
+     * 3表示未登录，4表示登录成功，5表示登录失败，6表示登出
+     */
+    private final int status;
+    /**
+     * 信息<br/>
+     * 如果发起抢红包成功则封装红包key<br/>
+     * 如果参与抢红包成功则为空<br/>
+     * 如果响应错误则封装错误提示信息
+     */
+    private final String msg;
+    /**
+     * 结果<br/>
+     * 如果发起抢红包成功或参与抢红包成功则封装具体结果<br/>
+     * 如果响应错误则封装错误标识<br/>
+     * 如果登录成功则封装JWT令牌<br/>
+     */
+    private final T result;
 
     /**
      * 发起抢红包成功，结果返回发起日期时间、金额、份数、有效期等信息

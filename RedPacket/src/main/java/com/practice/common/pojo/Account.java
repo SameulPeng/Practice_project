@@ -11,6 +11,12 @@ import lombok.ToString;
 @Getter
 @ToString
 public class Account {
-    private String username; // 用户名
-    private String password; // 明文密码
+    /**
+     * 用户名
+     */
+    private String username;
+    /**
+     * 明文密码
+     */
+    private String password;
 }

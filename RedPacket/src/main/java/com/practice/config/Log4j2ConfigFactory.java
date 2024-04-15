@@ -12,10 +12,13 @@ import org.apache.logging.log4j.core.config.builder.api.*;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.StringUtils;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 import java.net.URI;
-import java.util.HashMap;
+import java.util.Properties;
 
 /**
  *  日志配置工厂类<br/>
@@ -24,7 +27,7 @@ import java.util.HashMap;
  *  2. 在 resources 目录下创建 logging.cfg 文件<br/>
  *  覆盖条件<br/>
  *  1. 更改或移除配置文件路径 logging.config=...<br/>
- *  2. 在上述路径或 resources 目录下创建 xml、json、yaml、properties 等配置文件<br/>
+ *  2. 在上述路径或 resources 目录下创建 xml、json、yaml、properties 等配置文件
  */
 /*
     原理
@@ -45,75 +48,85 @@ import java.util.HashMap;
 // 原有配置工厂类的优先级，SpringBoot自动配置优先级为0，xml、json、yaml、properties等文件配置优先级分别为5、6、7、8
 @Order(9)
 public class Log4j2ConfigFactory extends ConfigurationFactory {
-    private String logPattern = // 日志格式
-            "%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight{%-5.5p} [%-20.20t] %-60.60c{1.}:   %m%n";
-    private String dataPattern = // 大数据格式
-            "%m";
-    private String dirPath = // 日志文件目录
-            "./logs/";
-    private String filePattern = // 日志文件名称格式
-            "%d{yyyy-MM-dd}/%d{yyyy-MM-dd-HH}_%i.log.gz";
-    private boolean toConsole = true; // 是否输出日志到控制台
-    private boolean toFile = false; // 是否输出日志到文件
-    private boolean toBigData = false; // 是否输出日志到大数据接口
+    /**
+     * 日志格式
+     */
+    private String logPattern = "%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight{%-5.5p} [%-20.20t] %-60.60c{1.}:   %m%n";
+    /**
+     * 大数据格式
+     */
+    private String dataPattern = "%m";
+    /**
+     * 日志文件目录
+     */
+    private String dirPath = "./logs/";
+    /**
+     * 日志文件名称格式
+     */
+    private String filePattern = "%d{yyyy-MM-dd}/%d{yyyy-MM-dd-HH}_%i.log.gz";
+    /**
+     * 是否输出日志到控制台
+     */
+    private boolean toConsole = true;
+    /**
+     * 是否输出日志到文件
+     */
+    private boolean toFile = false;
+    /**
+     * 是否输出日志到大数据接口
+     */
+    private boolean toBigData = false;
 
     public Log4j2ConfigFactory() {
-        HashMap<String, String> params = new HashMap<>();
         // 读取 resources 目录下的 logging.cfg 配置文件
+        Properties params = new Properties();
         try (BufferedReader br = new BufferedReader(new FileReader(
                 ClassUtils.getDefaultClassLoader().getResource("").getPath() + "logging.cfg"))) {
-            String line;
-            while((line = br.readLine()) != null) {
-                // 忽略注释行和空行
-                if (line.length() == 0 || line.trim().startsWith("#")) continue;
-                // 解析键值对
-                String[] kv = line.split("=", 2);
-                String key = kv[0];
-                String value = kv[1];
-                if (key != null && key.length() > 0 && value != null && value.length() > 0) {
-                    params.put(key, value);
-                }
-            }
-        } catch (Exception ignore) {}
+            params.load(br);
+        } catch (IOException ignore) {}
 
+        // 使用读取到的有效配置项值覆盖默认值
         String value;
         if (params.size() > 0) {
-            if ((value = params.get("log-pattern")) != null) this.logPattern = value;
-            if ((value = params.get("data-pattern")) != null) this.dataPattern = value;
-            if ((value = params.get("dir-path")) != null) this.dirPath = value;
-            if ((value = params.get("file-pattern")) != null) this.filePattern = value;
-            if ((value = params.get("to-console")) != null) this.toConsole = Boolean.parseBoolean(value);
-            if ((value = params.get("to-file")) != null) this.toFile = Boolean.parseBoolean(value);
-            if ((value = params.get("to-big-data")) != null) this.toBigData = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("log-pattern"))) this.logPattern = value;
+            if (StringUtils.hasLength(value = (String) params.get("data-pattern"))) this.dataPattern = value;
+            if (StringUtils.hasLength(value = (String) params.get("dir-path"))) this.dirPath = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-pattern"))) this.filePattern = value;
+            if (StringUtils.hasLength(value = (String) params.get("to-console"))) this.toConsole = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("to-file"))) this.toFile = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("to-big-data"))) this.toBigData = Boolean.parseBoolean(value);
 
-            if ((value = params.get("file-warn.size-each-file")) != null) FileWarnParams.sizeEachFile = value;
-            if ((value = params.get("file-warn.count-each-day")) != null) FileWarnParams.countEachDay = Integer.parseInt(value);
-            if ((value = params.get("file-warn.days-kept")) != null) FileWarnParams.daysKept = value;
-            if ((value = params.get("file-warn.size-kept")) != null) FileWarnParams.sizeKept = value;
-            if ((value = params.get("file-warn.count-kept")) != null) FileWarnParams.countKept = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-warn.active"))) FileWarnParams.active = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-warn.size-each-file"))) FileWarnParams.sizeEachFile = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-warn.count-each-day"))) FileWarnParams.countEachDay = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-warn.days-kept"))) FileWarnParams.daysKept = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-warn.size-kept"))) FileWarnParams.sizeKept = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-warn.count-kept"))) FileWarnParams.countKept = Integer.parseInt(value);
 
-            if ((value = params.get("file-biz.size-each-file")) != null) FileBizParams.sizeEachFile = value;
-            if ((value = params.get("file-biz.days-kept")) != null) FileBizParams.daysKept = value;
-            if ((value = params.get("file-biz.size-kept")) != null) FileBizParams.sizeKept = value;
-            if ((value = params.get("file-biz.count-kept")) != null) FileBizParams.countKept = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-biz.active"))) FileBizParams.active = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-biz.size-each-file"))) FileBizParams.sizeEachFile = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-biz.days-kept"))) FileBizParams.daysKept = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-biz.size-kept"))) FileBizParams.sizeKept = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-biz.count-kept"))) FileBizParams.countKept = Integer.parseInt(value);
 
-            if ((value = params.get("file-info.size-each-file")) != null) FileInfoParams.sizeEachFile = value;
-            if ((value = params.get("file-info.count-each-day")) != null) FileInfoParams.countEachDay = Integer.parseInt(value);
-            if ((value = params.get("file-info.days-kept")) != null) FileInfoParams.daysKept = value;
-            if ((value = params.get("file-info.size-kept")) != null) FileInfoParams.sizeKept = value;
-            if ((value = params.get("file-info.count-kept")) != null) FileInfoParams.countKept = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-info.active"))) FileInfoParams.active = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-info.size-each-file"))) FileInfoParams.sizeEachFile = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-info.count-each-day"))) FileInfoParams.countEachDay = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("file-info.days-kept"))) FileInfoParams.daysKept = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-info.size-kept"))) FileInfoParams.sizeKept = value;
+            if (StringUtils.hasLength(value = (String) params.get("file-info.count-kept"))) FileInfoParams.countKept = Integer.parseInt(value);
 
-            if ((value = params.get("kafka.bootstrap-servers")) != null) BigDataParams.bootstrapServers = value;
-            if ((value = params.get("kafka.topic")) != null) BigDataParams.topic = value;
-            if ((value = params.get("kafka.key")) != null) BigDataParams.key = value;
-            if ((value = params.get("kafka.sync-send")) != null) BigDataParams.syncSend = Boolean.parseBoolean(value);
-            if ((value = params.get("kafka.buffer-memory")) != null) BigDataParams.bufferMemory = Long.parseLong(value);
-            if ((value = params.get("kafka.batch-size")) != null) BigDataParams.batchSize = Long.parseLong(value);
-            if ((value = params.get("kafka.linger-ms")) != null) BigDataParams.lingerMs = Long.parseLong(value);
-            if ((value = params.get("kafka.acks")) != null) BigDataParams.acks = Integer.parseInt(value);
-            if ((value = params.get("kafka.retries")) != null) BigDataParams.retries = Integer.parseInt(value);
-            if ((value = params.get("kafka.request-timeout-ms")) != null) BigDataParams.requestTimeoutMS = Long.parseLong(value);
-            if ((value = params.get("kafka.compression-type")) != null) {
+            if (StringUtils.hasLength(value = (String) params.get("kafka.bootstrap-servers"))) BigDataParams.bootstrapServers = value;
+            if (StringUtils.hasLength(value = (String) params.get("kafka.topic"))) BigDataParams.topic = value;
+            if (StringUtils.hasLength(value = (String) params.get("kafka.key"))) BigDataParams.key = value;
+            if (StringUtils.hasLength(value = (String) params.get("kafka.sync-send"))) BigDataParams.syncSend = Boolean.parseBoolean(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.buffer-memory"))) BigDataParams.bufferMemory = Long.parseLong(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.batch-size"))) BigDataParams.batchSize = Long.parseLong(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.linger-ms"))) BigDataParams.lingerMs = Long.parseLong(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.acks"))) BigDataParams.acks = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.retries"))) BigDataParams.retries = Integer.parseInt(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.request-timeout-ms"))) BigDataParams.requestTimeoutMS = Long.parseLong(value);
+            if (StringUtils.hasLength(value = (String) params.get("kafka.compression-type"))) {
                 try {
                     BigDataParams.compressionType = CompressionType.forName(value);
                 } catch (IllegalArgumentException e) {
@@ -127,49 +140,136 @@ public class Log4j2ConfigFactory extends ConfigurationFactory {
      * 错误日志文件（WARN及以上日志级别）配置
      */
     private static class FileWarnParams {
-        private static String sizeEachFile = "200 MB"; // 单个文件最大大小
-        private static int countEachDay = 10; // 单日文件最大数量
-        private static String daysKept = "7d"; // 文件保留天数
-        private static String sizeKept = "10 GB"; // 文件最大总大小
-        private static int countKept = 100; // 文件最大总数量
+        /**
+         * 是否输出到日志文件
+         */
+        private static boolean active = true;
+        /**
+         * 单个文件最大大小
+         */
+        private static String sizeEachFile = "200 MB";
+        /**
+         * 单日文件最大数量
+         */
+        private static int countEachDay = 10;
+        /**
+         * 文件保留天数
+         */
+        private static String daysKept = "7d";
+        /**
+         * 文件最大总大小
+         */
+        private static String sizeKept = "10 GB";
+        /**
+         * 文件最大总数量
+         */
+        private static int countKept = 100;
     }
 
     /**
      * 业务日志文件（BIZ日志级别）配置
      */
     public static class FileBizParams {
-        private static String sizeEachFile = "200 MB"; // 单个文件最大大小
-        private static String daysKept = "30d"; // 文件保留天数
-        private static String sizeKept = "100 GB"; // 文件最大总大小
-        private static int countKept = 1000; // 文件最大总数量
+        /**
+         * 是否输出到日志文件
+         */
+        private static boolean active = true;
+        /**
+         * 单个文件最大大小
+         */
+        private static String sizeEachFile = "200 MB";
+        /**
+         * 文件保留天数
+         */
+        private static String daysKept = "30d";
+        /**
+         * 文件最大总大小
+         */
+        private static String sizeKept = "100 GB";
+        /**
+         * 文件最大总数量
+         */
+        private static int countKept = 1000;
     }
 
     /**
      * 普通日志文件（INFO日志级别）配置
      */
     private static class FileInfoParams {
-        private static String sizeEachFile = "200 MB"; // 单个文件最大大小
-        private static int countEachDay = 10; // 单日文件最大数量
-        private static String daysKept = "7d"; // 文件保留天数
-        private static String sizeKept = "10 GB"; // 文件最大总大小
-        private static int countKept = 100; // 文件最大总数量
+        /**
+         * 是否输出到日志文件
+         */
+        private static boolean active = false;
+        /**
+         * 单个文件最大大小
+         */
+        private static String sizeEachFile = "200 MB";
+        /**
+         * 单日文件最大数量
+         */
+        private static int countEachDay = 10;
+        /**
+         * 文件保留天数
+         */
+        private static String daysKept = "7d";
+        /**
+         * 文件最大总大小
+         */
+        private static String sizeKept = "10 GB";
+        /**
+         * 文件最大总数量
+         */
+        private static int countKept = 100;
     }
 
     /**
      * 大数据接口（BIGDATA日志级别）配置
      */
     private static class BigDataParams {
-        private static String bootstrapServers = "localhost:9092"; // Kafka 服务器地址
-        private static String topic = "red-packet-big-data"; // Kafka 主题
-        private static String key = null; // Kafka 消息key
-        private static boolean syncSend = false; // Kafka 是否同步发送
-        private static long bufferMemory = 64 << 10 << 10; // Kafka 缓冲区大小
-        private static long batchSize = 32 << 10; // Kafka 缓冲区数据批次大小
-        private static long lingerMs = 1000; // Kafka 缓冲区数据拉取延迟时间
-        private static int acks = -1; // Kafka 生产应答方式
-        private static int retries = 3; // Kafka 重试次数
-        private static long requestTimeoutMS = 1000; // Kafka 请求超时时间
-        private static CompressionType compressionType = CompressionType.NONE; // Kafka 压缩方式
+        /**
+         * Kafka 服务器地址
+         */
+        private static String bootstrapServers = "localhost:9092";
+        /**
+         * Kafka 主题
+         */
+        private static String topic = "red-packet-big-data";
+        /**
+         * Kafka 消息key
+         */
+        private static String key = null;
+        /**
+         * Kafka 是否同步发送
+         */
+        private static boolean syncSend = false;
+        /**
+         * Kafka 缓冲区大小
+         */
+        private static long bufferMemory = 64 << 10 << 10;
+        /**
+         * Kafka 缓冲区数据批次大小
+         */
+        private static long batchSize = 32 << 10;
+        /**
+         * Kafka 缓冲区数据拉取延迟时间
+         */
+        private static long lingerMs = 1000;
+        /**
+         * Kafka 生产应答方式
+         */
+        private static int acks = -1;
+        /**
+         * Kafka 重试次数
+         */
+        private static int retries = 3;
+        /**
+         * Kafka 请求超时时间
+         */
+        private static long requestTimeoutMS = 1000;
+        /**
+         * Kafka 压缩方式
+         */
+        private static CompressionType compressionType = CompressionType.NONE;
     }
 
     @Override
@@ -198,7 +298,7 @@ public class Log4j2ConfigFactory extends ConfigurationFactory {
     private Configuration createConfiguration(ConfigurationBuilder<BuiltConfiguration> builder) {
         // <Configuration>
         builder.setConfigurationName("RedPacket")
-                .setStatusLevel(Level.INFO)
+                .setStatusLevel(Level.WARN)
                 .setMonitorInterval("0");
 
         // <CustomLevels>
@@ -231,12 +331,18 @@ public class Log4j2ConfigFactory extends ConfigurationFactory {
             rootLogger.add(builder.newAppenderRef("console"));
         }
         if (toFile) {
-            builder.add(createFileWarnAppender(builder))
-                    .add(createFileBizAppender(builder))
-                    .add(createFileInfoAppender(builder));
-            rootLogger.add(builder.newAppenderRef("file-warn"))
-                    .add(builder.newAppenderRef("file-biz"))
-                    .add(builder.newAppenderRef("file-info"));
+            if (FileWarnParams.active) {
+                builder.add(createFileWarnAppender(builder));
+                rootLogger.add(builder.newAppenderRef("file-warn"));
+            }
+            if (FileBizParams.active) {
+                builder.add(createFileBizAppender(builder));
+                rootLogger.add(builder.newAppenderRef("file-biz"));
+            }
+            if (FileInfoParams.active) {
+                builder.add(createFileInfoAppender(builder));
+                rootLogger.add(builder.newAppenderRef("file-info"));
+            }
         }
         if (toBigData) {
             builder.add(createKafkaAppender(builder));

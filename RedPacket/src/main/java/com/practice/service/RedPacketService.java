@@ -119,7 +119,7 @@ public class RedPacketService {
                 if (System.currentTimeMillis() > limit) removeFromAtomicMap(key);
             }
             // 以固定时间间隔，定期检查
-        }, interval, interval, TimeUnit.MINUTES);
+        }, interval, interval, TimeUnit.SECONDS);
     }
 
     /**
@@ -141,7 +141,6 @@ public class RedPacketService {
 
     /**
      * 发起抢红包，根据大红包总金额和分派数量，预先分成若干小红包
-     *
      * @param key        红包key
      * @param userId     发起抢红包用户ID
      * @param amount     红包总金额，单位为分
@@ -170,9 +169,7 @@ public class RedPacketService {
                 // 发送延时消息，用于结算
                 FutureTask<Integer> messageFuture = new FutureTask<>(
                         () -> rocketMQTemplate
-                                    .syncSendDelayTimeSeconds(
-                                            // 将消息TAG设置为当前JVM编号，此消息将由当前JVM的消费者进行消费
-                                            "RedPacketSettlement:" + redPacketProperties.getServiceId(),
+                                    .syncSendDelayTimeSeconds("RedPacketSettlement",
                                             MessageBuilder.withPayload(key).build(), expireTime)
                                     .getSendStatus() == SendStatus.SEND_OK ? 1 : null
                 );
@@ -328,7 +325,7 @@ public class RedPacketService {
     @Nullable
     private Map<String, Object> doCache(String key, ShareResult shareResult) {
         Map<String, Object> mapResult = shareResult.getMapResult();
-        // 如果红包结果为空集，表示红包结果key已经过期，直接返回空
+        // 如果红包结果为空集，表示红包结果key已经过期或无效，直接返回空，统一视作过期处理
         if (mapResult.size() == 0) {
             return null;
         }
@@ -382,7 +379,7 @@ public class RedPacketService {
                     // 如果标识为1，表示抢到红包，此时抢红包仍未结束，直接返回
                     int share = shareResult.getShare();
                     long timeCost = shareResult.getTimeCost();
-                    log.biz("[{}] [用户 {}] 抢到了红包，金额 {} 元，耗时 {} 秒", key, userId, share, timeCost / 1000f);
+                    log.biz("[{}] [用户 {}] 抢到了红包，金额 {} 元，耗时 {} 秒", key, userId, share / 100f, timeCost / 1000f);
                     // 使用惰性日志
                     log.bigdata("{}", () -> BigDataInfo.of(
                             BigDataInfo.Status.SHARE, key, userId, null,

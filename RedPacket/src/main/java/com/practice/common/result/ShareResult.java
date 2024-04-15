@@ -9,11 +9,28 @@ import java.util.Map;
  */
 @Getter
 public class ShareResult {
-    private final int status; // 抢红包标识，1表示抢到红包，0表示抢不到红包，2表示已经抢到过红包但重复参与
-    private final String msg; // 抢红包结果提示信息，如果抢到红包将返回金额信息
-    private final Map<String, Object> mapResult; // 红包结果
-    private final int share; // 抢到的金额
-    private final long timeCost; // 抢到红包的耗时
+    /**
+     * 抢红包标识<br/>
+     * 1表示抢到红包，0表示抢不到红包<br/>
+     * 2表示已经抢到过红包但重复参与
+     */
+    private final int status;
+    /**
+     * 抢红包结果提示信息，如果抢到红包将返回金额信息
+     */
+    private final String msg;
+    /**
+     * 红包结果
+     */
+    private final Map<String, Object> mapResult;
+    /**
+     * 抢到的金额
+     */
+    private final int share;
+    /**
+     * 抢到红包的耗时
+     */
+    private final long timeCost;
 
     /**
      * 抢到红包，返回提示信息、金额、红包结果、耗时

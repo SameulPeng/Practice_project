@@ -4,16 +4,15 @@ import com.practice.common.logging.ExtLogger;
 import com.practice.common.pojo.Account;
 import com.practice.common.result.RedPacketResult;
 import com.practice.common.util.JwtUtil;
+import com.practice.common.util.PasswordUtil;
 import com.practice.mapper.AccountMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
-import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @RestController
@@ -36,8 +35,8 @@ public class LoginController {
     public RedPacketResult login(@RequestBody Account account) {
         String username = account.getUsername();
         String password = account.getPassword();
-        // 将明文密码转换为MD5加密的密文密码
-        password = DigestUtils.md5DigestAsHex(password.getBytes(StandardCharsets.UTF_8));
+        // 将明文密码转换为密文密码
+        password = PasswordUtil.encode(password);
         // 查询数据库，校验账户密码是否正确
         String userId = accountMapper.checkAccount(username, password);
         if (userId != null) {

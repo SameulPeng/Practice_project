@@ -7,10 +7,22 @@ import lombok.Getter;
  */
 @Getter
 public class PublishResult {
-    private final String dateTime; // 发起抢红包的日期时间
-    private final int amount; // 发起抢红包的总金额
-    private final int shareNum; // 发起抢红包的份数
-    private final int expireTime; // 发起抢红包的有效期
+    /**
+     * 发起抢红包的日期时间
+     */
+    private final String dateTime;
+    /**
+     * 发起抢红包的总金额
+     */
+    private final int amount;
+    /**
+     * 发起抢红包的份数
+     */
+    private final int shareNum;
+    /**
+     * 发起抢红包的有效期
+     */
+    private final int expireTime;
 
     /**
      * 发起抢红包成功，返回发起日期时间、金额、份数、有效期

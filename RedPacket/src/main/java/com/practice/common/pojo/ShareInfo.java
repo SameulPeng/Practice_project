@@ -11,6 +11,12 @@ import lombok.ToString;
 @ToString
 @AllArgsConstructor
 public class ShareInfo {
-    private int share; // 抢到的红包金额
-    private long timeCost; // 耗时
+    /**
+     * 抢到的红包金额
+     */
+    private int share;
+    /**
+     * 抢到红包的耗时
+     */
+    private long timeCost;
 }

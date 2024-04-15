@@ -15,7 +15,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 /**
- * 参与抢红包拦截器，拦截对已经过期一段时间的红包的访问
+ * 参与抢红包拦截器，拦截对非法红包和已经过期一段时间的红包的访问
  */
 @Component
 public class ShareInterceptor implements HandlerInterceptor {
@@ -31,13 +31,22 @@ public class ShareInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         // 拦截参与抢红包请求，获取红包key
         String key = request.getParameter("key");
-        // 计算红包的访问时限
-        long limit = RedPacketKeyUtil.parseTimestamp(key)
-                + RedPacketKeyUtil.parseExpireTime(key) * 1000L
-                + redPacketProperties.getBiz().getResultKeepTime() * 1000L;
-        // 对访问时限以内的红包的查询可以放行，否则拒绝
         long timestamp = System.currentTimeMillis();
-        if (timestamp > limit) {
+
+        // 通过校验和检查红包key合法性
+        boolean proceed = RedPacketKeyUtil.checkKey(key);
+
+        // 如果红包key合法性校验通过，进一步检查访问时限
+        if (proceed) {
+            // 计算红包的访问时限
+            long limit = RedPacketKeyUtil.parseTimestamp(key)
+                    + RedPacketKeyUtil.parseExpireTime(key) * 1000L
+                    + redPacketProperties.getBiz().getResultKeepTime() * 1000L;
+            // 对访问时限以内的红包的查询可以放行，否则拒绝
+            proceed = timestamp <= limit;
+        }
+        // 如果拒绝访问，则直接进行响应
+        if (!proceed) {
             // 设置响应头信息的内容类型和字符集
             response.setContentType("application/json;charset=UTF-8");
             // 进行找不到红包的响应，转换为JSON格式字符串写出
@@ -55,8 +64,7 @@ public class ShareInterceptor implements HandlerInterceptor {
                     null, null
                     ).encode()
             );
-            return false;
         }
-        return true;
+        return proceed;
     }
 }
