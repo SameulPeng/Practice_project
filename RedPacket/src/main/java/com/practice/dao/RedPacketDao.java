@@ -5,20 +5,22 @@ import com.practice.common.util.RedPacketKeyUtil;
 import com.practice.config.RedPacketProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
-import org.springframework.util.ClassUtils;
 
 import javax.annotation.PostConstruct;
-import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.*;
 
 @Repository
-@Profile("biz")
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 public class RedPacketDao {
     @SuppressWarnings("rawtypes")
     private RedisTemplate redisTemplate;
@@ -49,8 +51,8 @@ public class RedPacketDao {
         );
 
         // 初始化Redis抢红包Lua脚本
-        try (BufferedReader br = new BufferedReader(new FileReader(
-                ClassUtils.getDefaultClassLoader().getResource("").getPath() + "lua/share.lua"))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                Objects.requireNonNull(this.getClass().getClassLoader().getResourceAsStream("lua/share.lua"))))) {
             char[] chars = new char[512];
             int len;
             StringBuilder sb = new StringBuilder();
@@ -69,27 +71,40 @@ public class RedPacketDao {
      * @param shares 大红包拆分后的若干小红包金额，单位为分
      * @param expireTime 红包过期时长，单位为秒
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void publish(String key, String[] shares, int expireTime) {
-        /*
-            拼接Lua脚本，目标：
-            redis.call('rpush', KEYS[1], 'share1', 'share2', ...)
-            redis.call('expire', KEYS[1], ARGV[1])
-            redis.call('hset', KEYS[2], '占位项', '0')
-         */
-        StringBuilder sb = new StringBuilder("redis.call('rpush', KEYS[1]");
-        for (String share : shares) {
-            sb.append(", '").append(share).append("'");
-        }
-        sb.append(") redis.call('expire', KEYS[1], ARGV[1])")
-                // 预生成红包结果key，保证即使没有用户参与抢红包也能结算退款
-                .append(" redis.call('hset', KEYS[2], '").append(redPacketProperties.getBiz().getResultPlaceholder()).append("', '0')");
-
         String redPacketKey = redPacketProperties.getBiz().getKeyPrefix() + key;
         String resultKey = redPacketProperties.getBiz().getResultPrefix() + key;
+        String resultPlaceholder = redPacketProperties.getBiz().getResultPlaceholder();
 
-        redisTemplate.execute(new DefaultRedisScript<>(sb.toString(), String.class),
-                Arrays.asList(redPacketKey, resultKey), String.valueOf(expireTime));
+        byte[][] bss = new byte[shares.length][];
+        for (int i = 0; i < shares.length; i++) {
+            bss[i] = shares[i].getBytes(StandardCharsets.UTF_8);
+        }
+        byte[] redPacketKeyBytes = redPacketKey.getBytes(StandardCharsets.UTF_8);
+        byte[] resultKeyBytes = resultKey.getBytes(StandardCharsets.UTF_8);
+        byte[] resultPlaceholderBytes = resultPlaceholder.getBytes(StandardCharsets.UTF_8);
+
+        // 使用管道操作，合并为单次请求
+        // 创建红包key，并设置过期时间
+        // 使用占位项预生成红包结果key，保证即使没有用户参与抢红包也能结算退款
+        List list = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            // 结果为红包份数
+            connection.listCommands().rPush(redPacketKeyBytes, bss);
+            // 结果为真
+            connection.expire(redPacketKeyBytes, expireTime);
+            // 结果为真
+            connection.hashCommands().hSet(resultKeyBytes, resultPlaceholderBytes, "0".getBytes(StandardCharsets.UTF_8));
+            return null;
+        });
+
+        // 检查管道操作结果，如果结果有误则抛出异常
+        if (list.size() != 3
+                || (Long) list.get(0) != shares.length
+                || !(Boolean) list.get(1)
+                || !(Boolean) list.get(2)) {
+            throw new RuntimeException();
+        }
     }
 
     /**
@@ -122,6 +137,7 @@ public class RedPacketDao {
             throw new RuntimeException(e);
         } catch (TimeoutException e) {
             // 如果超时，直接返回空
+            future.cancel(true);
             return null;
         }
 
@@ -146,5 +162,16 @@ public class RedPacketDao {
                     // 如果结果为正整数，表示抢到红包
                     : ShareResult.share(ShareResult.ShareType.SUCCESS_ONGOING, share, timeCost);
         }
+    }
+
+    /**
+     * 移除红包结果key<br/>
+     * 此方法在消息发送失败时被调用，移除没有过期时间的无效红包结果key，避免泄漏
+     * @param key 红包key
+     */
+    @SuppressWarnings("unchecked")
+    public void removeResult(String key) {
+        String resultKey = redPacketProperties.getBiz().getResultPrefix() + key;
+        redisTemplate.delete(resultKey);
     }
 }

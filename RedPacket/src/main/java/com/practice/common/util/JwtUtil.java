@@ -5,11 +5,10 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import org.springframework.util.ClassUtils;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Base64;
@@ -35,9 +34,9 @@ public class JwtUtil {
         Integer expireTime;
         Properties params = new Properties();
 
-        // 读取 resources 目录下的 jwt.properties 配置文件
-        try (BufferedReader br = new BufferedReader(new FileReader(
-                ClassUtils.getDefaultClassLoader().getResource("").getPath() + "jwt.properties"))) {
+        // 读取 jwt.properties 配置文件
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                ViableConfigUtil.get("jwt.properties")))) {
             params.load(br);
 
             secretKeySource = (String) params.get("jwt.secret-key-source");

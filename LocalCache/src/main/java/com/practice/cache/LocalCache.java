@@ -5,7 +5,6 @@ import com.practice.policy.EvictionPolicy;
 
 import java.util.Iterator;
 import java.util.Map;
-import java.util.function.BiFunction;
 
 /**
  * 本地缓存抽象类

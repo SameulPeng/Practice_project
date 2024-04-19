@@ -4,7 +4,6 @@ import com.practice.cache.LocalCache;
 import com.practice.policy.CacheWrapper;
 import com.practice.policy.EvictionPolicy;
 import com.practice.policy.impl.SerializedLruPolicy;
-import org.springframework.lang.NonNull;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,7 +30,7 @@ public class SerializedLruLocalCache<T> extends LocalCache<T> {
      * @param key 缓存key
      * @return 缓存value
      */
-    public T get(@NonNull String key) {
+    public T get(String key) {
         CacheWrapper<T> node = map.get(key);
         // 刷新缓存项并获取缓存项中的数据后返回
         return policy.get(node);
@@ -42,7 +41,7 @@ public class SerializedLruLocalCache<T> extends LocalCache<T> {
      * @param key 缓存key
      * @param value 缓存value
      */
-    public void put(@NonNull String key, T value) {
+    public void put(String key, T value) {
         CacheWrapper<T> node = policy.put(map, key, value);
         map.put(key, node);
     }
@@ -51,7 +50,7 @@ public class SerializedLruLocalCache<T> extends LocalCache<T> {
      * 移除缓存
      * @param key 缓存key
      */
-    public void remove(@NonNull String key) {
+    public void remove(String key) {
         CacheWrapper<T> node = map.remove(key);
         policy.remove(node);
     }

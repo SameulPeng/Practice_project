@@ -20,7 +20,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.time.format.DateTimeFormatter;
 
 @RestController
-@Profile("biz")
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 public class RedPacketController {
     private static final ExtLogger log = ExtLogger.create(RedPacketController.class); // 日志Logger对象
     private RedPacketService redPacketService;

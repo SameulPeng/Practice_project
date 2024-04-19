@@ -13,8 +13,7 @@ import java.nio.charset.StandardCharsets;
 public class RedPacketResult<T> {
     /**
      * 响应标识<br/>
-     * 0表示响应错误，1表示发起抢红包成功，2表示参与抢红包成功<br/>
-     * 3表示未登录，4表示登录成功，5表示登录失败，6表示登出
+     * 0表示响应错误，1表示发起抢红包成功，2表示参与抢红包成功，3表示未登录
      */
     private final int status;
     /**
@@ -27,8 +26,7 @@ public class RedPacketResult<T> {
     /**
      * 结果<br/>
      * 如果发起抢红包成功或参与抢红包成功则封装具体结果<br/>
-     * 如果响应错误则封装错误标识<br/>
-     * 如果登录成功则封装JWT令牌<br/>
+     * 如果响应错误则封装错误标识
      */
     private final T result;
 
@@ -56,31 +54,10 @@ public class RedPacketResult<T> {
     }
 
     /**
-     * 未登录
+     * 响应未登录
      */
     public static RedPacketResult<String> notLogin() {
         return new RedPacketResult<>(3, "未登录", null);
-    }
-
-    /**
-     * 登录成功
-     */
-    public static RedPacketResult<String> loginSuccess(String jwt) {
-        return new RedPacketResult<>(4, "登录成功", jwt);
-    }
-
-    /**
-     * 登录失败
-     */
-    public static RedPacketResult<String> loginFail() {
-        return new RedPacketResult<>(5, "登录失败", null);
-    }
-
-    /**
-     * 登出
-     */
-    public static RedPacketResult<String> logout() {
-        return new RedPacketResult<>(6, "登出成功", null);
     }
 
     private RedPacketResult(int status, String msg, T result) {

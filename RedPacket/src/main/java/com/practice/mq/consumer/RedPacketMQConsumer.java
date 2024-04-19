@@ -20,22 +20,22 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.util.ClassUtils;
 
 import javax.annotation.PostConstruct;
 import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
-import java.util.Arrays;
+import java.io.InputStreamReader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
  * 结算消息消费者
  */
 @Component
-@Profile("rocketmq")
+@Profile({"rocketmq-dev", "rocketmq-test", "rocketmq-prod"})
 @RocketMQMessageListener(
         consumerGroup = "RedPacketMQConsumer",
         topic = "RedPacketSettlement",
@@ -87,8 +87,8 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     @PostConstruct
     private void init() {
         // 初始化Redis红包结果key过期时间设置Lua脚本
-        try (BufferedReader br = new BufferedReader(new FileReader(
-                ClassUtils.getDefaultClassLoader().getResource("").getPath() + "lua/settle.lua"))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                Objects.requireNonNull(this.getClass().getClassLoader().getResourceAsStream("lua/settle.lua"))))) {
             char[] chars = new char[512];
             int len;
             StringBuilder sb = new StringBuilder();
@@ -104,7 +104,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
     /**
      * 抢红包结算<br/>
      * RocketMQ底层默认实现了多线程消费，默认线程数为20
-     *
      * @param key 红包key
      */
     @Override
@@ -119,11 +118,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
         // 使用分布式锁Redisson，保证幂等性处理的并发安全
         /*
             由于幂等性通过红包结果key的过期时间来保证，但获取和设置过期时间的两步操作本身不具有原子性，因此需要通过分布式锁实现原子性
-            虽然通过消息TAG的机制，尽量保证了同一个JVM实例发送的消息由自身进行消费，但是此处使用分布式锁而非JVM锁是出于以下考虑
-                JVM编号仅用于构造全局唯一的红包key，本身既无业务含义，也是自主设置而非通过注册中心进行唯一分配的
-                因此，此项目模块的JVM可以不依赖注册中心运行，因此也对其他JVM无感知，从机制上允许了两个不同JVM实例拥有编号
-                虽然JVM编号应当唯一，但是如果由于配置出错导致JVM编号重复，在运行时可能出现两个不同JVM实例上的消费者订阅相同消息TAG的情况，而这种逻辑上的错误不会影响运行
-                上述情况发生时，重复消息的幂等性就无法由JVM锁保证，因此使用分布式锁，对于涉及金额的幂等性处理，采用偏保守的策略
             此外，在最后设置红包结果key的过期时间时，再次检查过期时间，并使用Lua脚本实现了这两步操作的原子性，使结算过程实现了类似CAS的操作，保证幂等性
             如果不使用分布式锁，也能保证幂等性，但是由于设置红包结果key在数据库访问之后执行，不使用分布式锁会导致重复消息增加数据库的访问压力，因此还是使用分布式锁
         */
@@ -148,7 +142,7 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
                         // 通过为红包结果key设置过期时间，保证结算处理的幂等性
                         // 再次检查红包结果key的过期时间是否为-1，如果是则设置过期时间，通过Lua脚本实现两步操作的原子性
                         Long success = (Long) redisTemplate.execute(new DefaultRedisScript<>(settleScript, Long.class),
-                                Arrays.asList(resultKey), String.valueOf(redPacketProperties.getBiz().getResultKeepTime()));
+                                List.of(resultKey), String.valueOf(redPacketProperties.getBiz().getResultKeepTime()));
                         if (success == null) {
                             throw new RuntimeException("[" + key + "] 访问Redis异常，结算失败");
                         }
@@ -181,9 +175,8 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
 
     /**
      * 整理红包结果
-     *
-     * @param mapResult   从Redis获取的红包结果原始信息
-     * @param amount      红包总金额
+     * @param mapResult 从Redis获取的红包结果原始信息
+     * @param amount 红包总金额
      * @param publisherId 发起用户ID
      * @return 整理后的红包结果
      */
@@ -211,7 +204,6 @@ public class RedPacketMQConsumer implements RocketMQListener<String> {
 
     /**
      * 解析红包结果原始信息
-     *
      * @param mapResult 从Redis获取的红包结果原始信息
      * @return 解析后的红包结果
      */

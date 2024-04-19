@@ -1,7 +1,5 @@
 package com.practice.policy;
 
-import org.springframework.lang.Nullable;
-
 import java.util.Iterator;
 import java.util.Map;
 
@@ -14,7 +12,7 @@ public interface EvictionPolicy<T> {
      * 查询缓存
      * @param wrapper 缓存项
      */
-    T get(@Nullable CacheWrapper<T> wrapper);
+    T get(CacheWrapper<T> wrapper);
 
     /**
      * 新增缓存
@@ -29,7 +27,7 @@ public interface EvictionPolicy<T> {
      * 移除缓存
      * @param wrapper 缓存项
      */
-    void remove(@Nullable CacheWrapper<T> wrapper);
+    void remove(CacheWrapper<T> wrapper);
 
     /**
      * 获取迭代器

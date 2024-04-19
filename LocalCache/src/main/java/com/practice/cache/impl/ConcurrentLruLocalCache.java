@@ -4,7 +4,6 @@ import com.practice.cache.LocalCache;
 import com.practice.policy.CacheWrapper;
 import com.practice.policy.EvictionPolicy;
 import com.practice.policy.impl.ConcurrentLruPolicy;
-import org.springframework.lang.NonNull;
 
 import java.util.Iterator;
 import java.util.Map;
@@ -40,7 +39,7 @@ public class ConcurrentLruLocalCache<T> extends LocalCache<T> {
      * @param key 缓存key
      * @return 缓存value
      */
-    public T get(@NonNull String key) {
+    public T get(String key) {
         // 增加刷新计数
         CacheWrapper<T> node = map.computeIfPresent(key, refreshCountAdder);
         // 刷新缓存项并获取缓存项中的数据后返回
@@ -52,7 +51,7 @@ public class ConcurrentLruLocalCache<T> extends LocalCache<T> {
      * @param key 缓存key
      * @param value 缓存value
      */
-    public void put(@NonNull String key, T value) {
+    public void put(String key, T value) {
         // 可能存在链表节点泄漏问题，需要用户自行保证不重复新增同一个缓存项
         CacheWrapper<T> node = policy.put(map, key, value);
         map.put(key, node);
@@ -62,7 +61,7 @@ public class ConcurrentLruLocalCache<T> extends LocalCache<T> {
      * 移除缓存
      * @param key 缓存key
      */
-    public void remove(@NonNull String key) {
+    public void remove(String key) {
         CacheWrapper<T> node = map.remove(key);
         policy.remove(node);
     }

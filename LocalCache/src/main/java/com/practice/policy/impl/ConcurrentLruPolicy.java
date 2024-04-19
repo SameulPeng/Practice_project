@@ -2,7 +2,6 @@ package com.practice.policy.impl;
 
 import com.practice.policy.CacheWrapper;
 import com.practice.policy.EvictionPolicy;
-import org.springframework.lang.Nullable;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
@@ -69,12 +68,10 @@ public class ConcurrentLruPolicy<T> implements EvictionPolicy<T> {
         }
 
         @Override
-        @Nullable
         public T get() {
             return value;
         }
 
-        @Nullable
         public String getKey() {
             return key;
         }
@@ -346,7 +343,7 @@ public class ConcurrentLruPolicy<T> implements EvictionPolicy<T> {
      * @param node 缓存节点
      */
     @Override
-    public T get(@Nullable CacheWrapper<T> node) {
+    public T get(CacheWrapper<T> node) {
         if (node != null) {
             // 缓存项刷新异步处理，并指定了调用者自己执行的拒绝策略
             refreshPool.submit(() -> ((LruCacheNode) node).refresh());
@@ -376,7 +373,7 @@ public class ConcurrentLruPolicy<T> implements EvictionPolicy<T> {
      * @param node 缓存节点
      */
     @Override
-    public void remove(@Nullable CacheWrapper<T> node) {
+    public void remove(CacheWrapper<T> node) {
         if (node != null) ((LruCacheNode) node).remove();
     }
 

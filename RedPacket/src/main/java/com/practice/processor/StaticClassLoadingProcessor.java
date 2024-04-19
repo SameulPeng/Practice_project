@@ -3,6 +3,7 @@ package com.practice.processor;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Component;
  * 加载失败则抛出异常，使容器无法启动，以实现快速失败（Fail-fast）
  */
 @Component
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 public class StaticClassLoadingProcessor implements BeanFactoryPostProcessor {
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {

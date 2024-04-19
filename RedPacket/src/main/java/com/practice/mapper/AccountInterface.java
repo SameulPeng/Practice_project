@@ -14,7 +14,7 @@ import java.util.Map;
  * 模拟账户业务接口类
  */
 @Component
-@Profile("mysql")
+@Profile({"mysql-dev", "mysql-test", "mysql-prod"})
 public class AccountInterface {
     private AccountMapper accountMapper;
     private SqlSessionFactory sqlSessionFactory;

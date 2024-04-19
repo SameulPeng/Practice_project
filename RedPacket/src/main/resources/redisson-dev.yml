@@ -1,3 +1,4 @@
+# Redisson配置文件
 singleServerConfig:
   address: redis://192.168.227.104:6379
   password: 1234

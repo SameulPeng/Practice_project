@@ -18,7 +18,7 @@ import java.util.*;
  * 仅排序前N名，N的值通过配置项 red-packet.biz.share-rank-num 和 red-packet.biz.time-cost-rank-num 配置
  */
 @Component
-@Profile("biz")
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 @ExtensionPriority(10)
 public class ShareAndTimeCostSortingExtension implements RedPacketExtension {
     private int shareRankNum; // 参与抢红包金额排名数量，即显示抢红包金额最大的前若干名

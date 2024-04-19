@@ -1,9 +1,11 @@
 package com.practice.extension.impl;
 
+import com.practice.common.annotation.ExtensionPriority;
 import com.practice.common.result.RedPacketResult;
 import com.practice.extension.RedPacketExtension;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -13,6 +15,8 @@ import java.util.Map;
  */
 @Slf4j
 @Component
+@Profile("biz-dev")
+@ExtensionPriority(Integer.MIN_VALUE)
 @ConditionalOnProperty("red-packet.extension-test")
 public class RedPacketExtensionTest implements RedPacketExtension {
     @Override

@@ -61,8 +61,8 @@ public class RedPacketKeyUtil {
      * @return 红包key负载数据是否正确
      */
     public static boolean checkKey(String key) {
-        String payload = getPayload(key);
-        return calculateChecksum(payload).equals(key.substring(key.length() - CHECKSUM_CHARS));
+        return key.length() > SERVICE_ID_CHARS + THREAD_ID_CHARS + AMOUNT_CHARS + EXPIRE_TIME_CHARS + TIMESTAMP_CHARS + CHECKSUM_CHARS
+                && calculateChecksum(getPayload(key)).equals(key.substring(key.length() - CHECKSUM_CHARS));
     }
 
     /**

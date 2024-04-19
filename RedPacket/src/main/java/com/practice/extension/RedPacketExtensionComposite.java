@@ -4,6 +4,7 @@ import com.practice.common.annotation.ExtensionPriority;
 import com.practice.common.result.RedPacketResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -17,6 +18,7 @@ import java.util.Map;
  */
 @Slf4j
 @Component
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 public class RedPacketExtensionComposite implements RedPacketExtension {
     private List<RedPacketExtension> extensions; // 依赖注入所有抢红包业务扩展接口实现类组件
 

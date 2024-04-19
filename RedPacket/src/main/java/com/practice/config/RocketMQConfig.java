@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Profile;
  * RocketMQ配置类
  */
 @Configuration
-@Profile("rocketmq")
+@Profile({"rocketmq-dev", "rocketmq-test", "rocketmq-prod"})
 public class RocketMQConfig {
     @Bean
     public RocketMQTemplate rocketMQTemplate(@Value("${rocketmq.name-server}") String nameServer) {

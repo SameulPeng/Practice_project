@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 缓存命中率统计和定时计算扩展类
  */
 @Component
-@Profile("biz")
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 @ExtensionPriority(5)
 @ConditionalOnProperty("red-packet.share.cache-hit-ratio-stats")
 public class CacheHitRatioExtension implements RedPacketExtension {
@@ -57,7 +57,10 @@ public class CacheHitRatioExtension implements RedPacketExtension {
                 Executors.newScheduledThreadPool(1, r -> new Thread(r, "CacheHitRatioTeller"));
         int interval = redPacketProperties.getShare().getCacheHitRatioCheckInterval();
         scheduledPool.scheduleAtFixedRate(new Runnable() {
-            private long lastTimestamp = System.currentTimeMillis();;
+            private long lastTimestamp = System.currentTimeMillis();
+            private long lastTotals = totalCount.get();
+            private long lastResults = resultCount.get();
+            private long lastMisses = missCount.get();
 
             @Override
             public void run() {
@@ -67,10 +70,19 @@ public class CacheHitRatioExtension implements RedPacketExtension {
                 long totals = totalCount.get();
                 long results = resultCount.get();
                 long misses = missCount.get();
+
+                // 获取时间段内变化值
+                long totalsDelta = totals - lastTotals;
+                long resultsDelta = results - lastResults;
+                long missesDelta = misses - lastMisses;
+
                 // 计算并输出缓存命中率
-                tell(lastTimestamp, timestamp, totals, results, misses);
+                tell(lastTimestamp, timestamp, totalsDelta, totals, resultsDelta, results, missesDelta, misses);
 
                 lastTimestamp = timestamp;
+                lastTotals = totals;
+                lastResults = results;
+                lastMisses = misses;
             }
         }, interval, interval, TimeUnit.SECONDS);
     }
@@ -103,17 +115,21 @@ public class CacheHitRatioExtension implements RedPacketExtension {
      * @param results 获取结果次数
      * @param misses 缓存未命中次数
      */
-    private void tell(long fromTimestamp, long toTimestamp, long totals, long results, long misses) {
+    private void tell(long fromTimestamp, long toTimestamp, long totalsDelta, long totals, long resultsDelta, long results, long missesDelta, long misses) {
         // 获取结果率 = 获取结果次数 / 有效红包访问总次数
         // 如果此比率很小，则参与抢红包的用户竞争不激烈，且较少查看红包结果
         double resultRatio = totals == 0 ? 0 : results * 1d / totals;
+        double resultDeltaRatio = totalsDelta == 0 ? 0 : resultsDelta * 1d / totalsDelta;
         // 缓存命中率 = 1 - 缓存未命中次数 / 获取结果次数
         double cacheHitRatio = results == 0 ? 0 : (1 - misses * 1d / results);
+        double cacheHitDeltaRatio = resultsDelta == 0 ? 0 : (1 - missesDelta * 1d / resultsDelta);
 
         // 将毫秒时间戳转换为日期时间格式
         String from = DateTimeUtil.millis2DateTime(dateTimeFormatter, fromTimestamp);
         String to = DateTimeUtil.millis2DateTime(dateTimeFormatter, toTimestamp);
 
-        log.biz(String.format("from %s to %s, result ratio: %.2f, cache hit ratio: %.2f", from, to, resultRatio, cacheHitRatio));
+        // 输出统计数据，分别为总结果率、总缓存命中率、当前周期结果率、当前周期缓存命中率
+        log.biz(String.format("from %s to %s: {result ratio: %.2f, cache hit ratio: %.2f, result delta ratio: %.2f, cache hit delta ratio: %.2f}",
+                from, to, resultRatio, cacheHitRatio, resultDeltaRatio, cacheHitDeltaRatio));
     }
 }

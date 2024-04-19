@@ -31,7 +31,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
-@Profile("biz")
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 public class RedPacketService {
     private final ExtLogger log = ExtLogger.create(RedPacketService.class); // 日志Logger对象
     private RedPacketDao redPacketDao;
@@ -129,14 +129,7 @@ public class RedPacketService {
                 } catch (DataIntegrityViolationException e) {
                     throw new BalanceNotEnoughException(userId, amount);
                 }
-                // 发送延时消息，用于结算
-                FutureTask<Integer> messageFuture = new FutureTask<>(
-                        () -> rocketMQTemplate
-                                    .syncSendDelayTimeSeconds("RedPacketSettlement",
-                                            MessageBuilder.withPayload(key).build(), expireTime)
-                                    .getSendStatus() == SendStatus.SEND_OK ? 1 : null
-                );
-                // 创建红包key
+                // 在Redis中创建红包key
                 FutureTask<Integer> keyFuture = new FutureTask<>(
                         () -> {
                             try {
@@ -147,11 +140,22 @@ public class RedPacketService {
                             }
                         }
                 );
-                transactionPool.submit(messageFuture);
+                // 发送延时消息，用于结算
+                FutureTask<Integer> messageFuture = new FutureTask<>(
+                        () -> rocketMQTemplate
+                                    .syncSendDelayTimeSeconds("RedPacketSettlement",
+                                            MessageBuilder.withPayload(key).build(), expireTime)
+                                    .getSendStatus() == SendStatus.SEND_OK ? 1 : null
+                );
                 transactionPool.submit(keyFuture);
+                transactionPool.submit(messageFuture);
                 try {
-                    if (messageFuture.get() == null) throw new RuntimeException("延时消息发送失败");
                     if (keyFuture.get() == null) throw new RuntimeException("红包key创建失败");
+                    if (messageFuture.get() == null) {
+                        // 如果消息发送失败，则预生成的红包结果key会无法访问，造成泄漏，因此需要主动移除
+                        redPacketDao.removeResult(key);
+                        throw new RuntimeException("延时消息发送失败");
+                    }
                 } catch (InterruptedException | ExecutionException e) {
                     throw new RuntimeException(e);
                 }
@@ -201,7 +205,7 @@ public class RedPacketService {
                         if ((mapResult = cache.get(key)) == null) {
                             shareResult = redPacketDao.share(key, userId);
                             // 如果返回结果为空，表明请求超时，正常释放锁，进入下一轮循环重试
-                                // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
+                            // 如果抢不到红包，那么返回的是红包结果，写入本地缓存
                             if (shareResult != null && shareResult.getStatus() == 0) mapResult = doCache(key, shareResult);
                         }
                     }
@@ -275,9 +279,7 @@ public class RedPacketService {
     private Map<String, Object> doCache(String key, ShareResult shareResult) {
         Map<String, Object> mapResult = shareResult.getMapResult();
         // 如果红包结果为空集，表示红包结果key已经过期或无效，直接返回空，统一视作过期处理
-        if (mapResult.size() == 0) {
-            return null;
-        }
+        if (mapResult.size() == 0) return null;
         // 移除预生成结果占位项
         mapResult.remove(redPacketProperties.getBiz().getResultPlaceholder());
         // 解析红包结果原始信息
@@ -286,7 +288,6 @@ public class RedPacketService {
         cache.put(key, extensionComposite.onCache(mapResult));
         return mapResult;
     }
-
 
     /**
      * 处理参与抢红包结果

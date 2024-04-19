@@ -2,7 +2,6 @@ package com.practice.policy.impl;
 
 import com.practice.policy.CacheWrapper;
 import com.practice.policy.EvictionPolicy;
-import org.springframework.lang.Nullable;
 
 import java.util.Map;
 
@@ -34,7 +33,6 @@ public class SerializedLruPolicy<T> implements EvictionPolicy<T> {
             this.midpoint = this.tail;
         }
 
-        @Nullable
         private String getTailKey() {
             return tail.prev.key;
         }
@@ -53,7 +51,6 @@ public class SerializedLruPolicy<T> implements EvictionPolicy<T> {
         }
 
         @Override
-        @Nullable
         public T get() {
             return value;
         }
@@ -187,7 +184,7 @@ public class SerializedLruPolicy<T> implements EvictionPolicy<T> {
      * @param node 缓存节点
      */
     @Override
-    public T get(@Nullable CacheWrapper<T> node) {
+    public T get(CacheWrapper<T> node) {
         if (node != null) {
             ((LruCacheNode) node).refresh();
             return node.get();
@@ -203,7 +200,6 @@ public class SerializedLruPolicy<T> implements EvictionPolicy<T> {
      * @return 缓存节点
      */
     @Override
-    @Nullable
     public LruCacheNode put(Map<String, CacheWrapper<T>> map, String key, T value) {
         LruCacheNode node = new LruCacheNode(key, value);
         // 如果缓存容量已满，则先淘汰链表尾部的缓存项再写入
@@ -221,7 +217,7 @@ public class SerializedLruPolicy<T> implements EvictionPolicy<T> {
      * @param node 缓存节点
      */
     @Override
-    public void remove(@Nullable CacheWrapper<T> node) {
+    public void remove(CacheWrapper<T> node) {
         if (node != null) {
             ((LruCacheNode) node).remove();
         }

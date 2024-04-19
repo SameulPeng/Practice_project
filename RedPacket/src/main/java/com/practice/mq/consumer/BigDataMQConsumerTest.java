@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
  * 大数据接口消费者端测试类
  */
 @Component
-@Profile("kafka")
+@Profile("kafka-dev")
 @ConditionalOnProperty("spring.kafka.big-data-test")
 public class BigDataMQConsumerTest {
     @KafkaListener(topics = "red-packet-big-data", groupId = "big-data-test")

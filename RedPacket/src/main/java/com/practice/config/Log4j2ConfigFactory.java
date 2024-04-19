@@ -11,27 +11,25 @@ import org.apache.logging.log4j.core.config.Order;
 import org.apache.logging.log4j.core.config.builder.api.*;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.springframework.util.ClassUtils;
 import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
-import java.io.IOException;
 import java.net.URI;
 import java.util.Properties;
 
 /**
  *  日志配置工厂类<br/>
  *  生效条件<br/>
- *  1. 在 application.properties 配置文件中设置配置文件路径 logging.config=classpath:logging.cfg<br/>
- *  2. 在 resources 目录下创建 logging.cfg 文件<br/>
+ *  1. 在 application.properties 配置文件中设置配置文件路径 logging.config=...<br/>
+ *  2. 创建上述路径指定的拓展名为 cfg 的配置文件<br/>
  *  覆盖条件<br/>
  *  1. 更改或移除配置文件路径 logging.config=...<br/>
  *  2. 在上述路径或 resources 目录下创建 xml、json、yaml、properties 等配置文件
  */
 /*
     原理
-    由ConfigurationFactory类的静态内部类Factory的getConfiguration(LoggerContext, String, URI)方法确定配置工厂类
+    由ConfigurationFactory类的静态内部类Factory的getConfiguration(LoggerContext, ConfigurationSource)方法确定配置工厂类
         如果没有设置配置文件路径，则按优先级从高到低遍历配置工厂类，找到第一个支持类型包含全类型"*"的配置工厂类
         如果设置了配置文件路径，则按优先级从高到低遍历配置工厂类，找到第一个支持类型包含全类型"*"或配置文件扩展名的配置工厂类
         默认配置工厂类
@@ -41,7 +39,7 @@ import java.util.Properties;
             JSON 优先级 6 支持类型 json jsn
             XML 优先级 5 支持类型 xml *
             SpringBoot 优先级 0 支持类型 .springboot
-    因此当前自定义配置工厂类在设置了配置项 logging.config=classpath:logging.cfg 时生效，并从中读取配置项值，覆盖默认值
+    因此当前自定义配置工厂类在设置了配置项 logging.config 为拓展名 cfg 的配置文件时生效，并从中读取配置项值，覆盖默认值
  */
 @Plugin(name = "Log4j2ConfigFactory", category = ConfigurationFactory.CATEGORY)
 // 指定配置工厂类的优先级，数值越大，优先级越高
@@ -77,13 +75,12 @@ public class Log4j2ConfigFactory extends ConfigurationFactory {
      */
     private boolean toBigData = false;
 
-    public Log4j2ConfigFactory() {
-        // 读取 resources 目录下的 logging.cfg 配置文件
+    private void applyConfig(String location) {
+        // 读取配置文件
         Properties params = new Properties();
-        try (BufferedReader br = new BufferedReader(new FileReader(
-                ClassUtils.getDefaultClassLoader().getResource("").getPath() + "logging.cfg"))) {
+        try (BufferedReader br = new BufferedReader(new FileReader(location))) {
             params.load(br);
-        } catch (IOException ignore) {}
+        } catch (Exception ignore) {}
 
         // 使用读取到的有效配置项值覆盖默认值
         String value;
@@ -282,6 +279,7 @@ public class Log4j2ConfigFactory extends ConfigurationFactory {
 
     @Override
     public Configuration getConfiguration(LoggerContext loggerContext, ConfigurationSource source) {
+        applyConfig(source.getLocation());
         return getConfiguration(loggerContext, source.toString(), null);
     }
 

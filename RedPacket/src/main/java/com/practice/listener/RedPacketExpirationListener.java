@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  * 需要在Redis服务器端启用key过期事件功能
  */
 @Component
-@Profile("redis")
+@Profile({"redis-dev", "redis-test", "redis-prod"})
 @ConditionalOnProperty("spring.redis.key-listener")
 public class RedPacketExpirationListener extends KeyExpirationEventMessageListener {
     private static final ExtLogger log = ExtLogger.create(RedPacketExpirationListener.class); // 日志Logger对象

@@ -2,7 +2,7 @@ package com.practice.controller;
 
 import com.practice.common.logging.ExtLogger;
 import com.practice.common.pojo.Account;
-import com.practice.common.result.RedPacketResult;
+import com.practice.common.result.LoginResult;
 import com.practice.common.util.JwtUtil;
 import com.practice.common.util.PasswordUtil;
 import com.practice.mapper.AccountMapper;
@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@Profile("biz")
+@Profile({"biz-dev", "biz-test" ,"biz-prod"})
 public class LoginController {
     private static final ExtLogger log = ExtLogger.create(LoginController.class); // 日志Logger对象
     private AccountMapper accountMapper;
@@ -31,8 +31,7 @@ public class LoginController {
      * @param account 用户名和密码
      */
     @PostMapping("/redpacket/login")
-    @SuppressWarnings("rawtypes")
-    public RedPacketResult login(@RequestBody Account account) {
+    public LoginResult login(@RequestBody Account account) {
         String username = account.getUsername();
         String password = account.getPassword();
         // 将明文密码转换为密文密码
@@ -42,9 +41,9 @@ public class LoginController {
         if (userId != null) {
             log.biz("[ ] [用户 {}] 登录成功", userId);
             // 如果数据库中有用户名和密码记录，则根据对应的用户ID生成JWT令牌
-            return RedPacketResult.loginSuccess(JwtUtil.generate(Map.of("userId", userId)));
+            return LoginResult.loginSuccess(JwtUtil.generate(Map.of("userId", userId)));
         } else {
-            return RedPacketResult.loginFail();
+            return LoginResult.loginFail();
         }
     }
 
@@ -52,8 +51,7 @@ public class LoginController {
      * 登出
      */
     @GetMapping("/redpacket/logout")
-    @SuppressWarnings("rawtypes")
-    public RedPacketResult logout() {
-        return RedPacketResult.logout();
+    public LoginResult logout() {
+        return LoginResult.logout();
     }
 }
